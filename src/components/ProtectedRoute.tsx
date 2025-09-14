@@ -7,9 +7,19 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
 
-  if (!isAuthenticated) {
+  // Пока проверяем аутентификацию, показываем заглушку
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Если не аутентифицирован и загрузка завершена - перенаправляем
+  if (!isAuthenticated && !isLoading) {
     return <Navigate to="/login" replace />;
   }
 
