@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { authService } from '@/services/authService';
 
 const Login: React.FC = () => {
   const [username, setUsername] = useState('');
@@ -23,40 +24,32 @@ const Login: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Проверка логина и пароля
-      if (username === 'admin' && password === 'admin') {
-        if (!showTwoFactor) {
-          // Первый шаг - показать поле 2FA
-          setShowTwoFactor(true);
-          toast({
-            title: "Требуется 2FA код",
-            description: "Введите код двухфакторной аутентификации",
-          });
-          setIsLoading(false);
-          return;
-        }
-        
-        // Второй шаг - проверка 2FA кода
-        if (twoFactorCode === '123456') {
-          const success = login(username, password);
-          if (success) {
-            toast({
-              title: "Успешный вход",
-              description: "Добро пожаловать в систему!",
-            });
-            navigate('/');
-          }
-        } else {
-          toast({
-            title: "Неверный код 2FA",
-            description: "Проверьте правильность введённого кода",
-            variant: "destructive",
-          });
-        }
+      const credentials = {
+        login: username,
+        password,
+        ...(showTwoFactor && { two_fa_code: twoFactorCode })
+      };
+
+      const response = await authService.login(credentials);
+      
+      login(response.access_token);
+      toast({
+        title: "Успешный вход",
+        description: "Добро пожаловать в систему!",
+      });
+      navigate('/');
+      
+    } catch (error: any) {
+      if (error.response?.data?.error?.includes('2FA_REQUIRED')) {
+        setShowTwoFactor(true);
+        toast({
+          title: "Требуется 2FA",
+          description: "Введите код двухфакторной аутентификации",
+        });
       } else {
         toast({
           title: "Ошибка входа",
-          description: "Неверный логин или пароль. Используйте 'admin' для обоих полей.",
+          description: error.response?.data?.message || "Неверные учетные данные",
           variant: "destructive",
         });
       }
@@ -92,6 +85,7 @@ const Login: React.FC = () => {
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Введите логин"
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 
@@ -104,6 +98,7 @@ const Login: React.FC = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Введите пароль"
                     required
+                    disabled={isLoading}
                   />
                 </div>
               </>
@@ -119,6 +114,7 @@ const Login: React.FC = () => {
                   maxLength={6}
                   className="text-center text-lg tracking-widest"
                   required
+                  disabled={isLoading}
                 />
               </div>
             )}
@@ -140,18 +136,12 @@ const Login: React.FC = () => {
                   setShowTwoFactor(false);
                   setTwoFactorCode('');
                 }}
+                disabled={isLoading}
               >
                 Назад к входу
               </Button>
             )}
           </form>
-          
-          <div className="mt-4 text-center text-sm text-muted-foreground">
-            {showTwoFactor 
-              ? 'Используйте код: 123456'
-              : 'Для входа используйте: admin / admin'
-            }
-          </div>
         </CardContent>
       </Card>
     </div>

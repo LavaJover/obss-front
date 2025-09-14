@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (username: string, password: string) => boolean;
+  login: (token: string) => void;
   logout: () => void;
 }
 
@@ -16,25 +16,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check localStorage on component mount
-    const authStatus = localStorage.getItem('isAuthenticated');
-    if (authStatus === 'true') {
-      setIsAuthenticated(true);
-    }
+    const token = localStorage.getItem('access_token');
+    setIsAuthenticated(!!token);
   }, []);
 
-  const login = (username: string, password: string): boolean => {
-    if (username === 'admin' && password === 'admin') {
-      setIsAuthenticated(true);
-      localStorage.setItem('isAuthenticated', 'true');
-      return true;
-    }
-    return false;
+  const login = (token: string) => {
+    localStorage.setItem('access_token', token);
+    setIsAuthenticated(true);
   };
 
   const logout = () => {
+    localStorage.removeItem('access_token');
     setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
   };
 
   return (
