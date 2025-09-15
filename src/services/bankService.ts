@@ -21,6 +21,7 @@ export interface BankDetail {
   delay: number;
   enabled: boolean;
   trader_id: string;
+  device_id?: string; // Опциональное поле для привязки устройства
 }
 
 export interface BankDetailStats {
@@ -61,7 +62,7 @@ export const bankService = {
       max_orders_simultaneosly: parseFloat(form.max_orders_simultaneosly),
       max_quantity_day: parseInt(form.max_quantity_day),
       max_quantity_month: parseInt(form.max_quantity_month),
-      delay: form.delay * 60 + "s"
+      delay: Math.round(Number(form.delay) * 60) + "s",
     };
     
     const response = await apiClient.post('/banking/details', formattedForm);
@@ -79,7 +80,7 @@ export const bankService = {
       max_orders_simultaneosly: parseFloat(form.max_orders_simultaneosly),
       max_quantity_day: parseInt(form.max_quantity_day),
       max_quantity_month: parseInt(form.max_quantity_month),
-      delay: form.delay * 60 + "s"
+      delay: Math.round(Number(form.delay) * 60) + "s",
     };
     
     const response = await apiClient.patch('/banking/details', { bank_detail: formattedForm });

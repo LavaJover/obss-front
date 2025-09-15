@@ -1,3 +1,4 @@
+// src/components/History.tsx
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -5,93 +6,130 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Eye, CalendarIcon, Filter, X } from "lucide-react";
+import { Eye, CalendarIcon, Filter, X, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import apiClient from "@/lib/api-client";
+import { useAuth } from "@/contexts/AuthContext";
 
-const mockHistory = [
-  {
-    id: "12929",
-    amount: "-68.322522 USDT",
-    type: "Разморозка",
-    status: "Подтверждено",
-    date: "01.09.2025 17:13:33",
-    details: "Order: 02e530a2-363d-4bcc-b7b2-ff1af21b534f"
-  },
-  {
-    id: "12928",
-    amount: "+68.322522 USDT",
-    type: "Заморозка",
-    status: "В обработке",
-    date: "01.09.2025 17:11:28",
-    details: "Order: 02e530a2-363d-4bcc-b7b2-ff1af21b534f"
-  },
-  {
-    id: "12927",
-    amount: "+150.50 USDT",
-    type: "Награда",
-    status: "Подтверждено",
-    date: "01.09.2025 16:45:12",
-    details: "Deal: #12345 - Успешное завершение"
-  },
-  {
-    id: "12926",
-    amount: "-75.25 USDT",
-    type: "Комиссия",
-    status: "Подтверждено",
-    date: "01.09.2025 15:30:45",
-    details: "Platform fee for deal #12344"
-  },
-  {
-    id: "12925",
-    amount: "+500.00 USDT",
-    type: "Пополнение",
-    status: "Подтверждено",
-    date: "01.09.2025 14:20:18",
-    details: "Bank transfer confirmation"
+interface Transaction {
+  id: number;
+  traderId: string;
+  currency: string;
+  type: string;
+  amount: string;
+  txHash: string | null;
+  orderId: string | null;
+  status: string;
+  createdAt: string;
+}
+
+interface PaginationInfo {
+  totalItems: number;
+  totalPages: number;
+  currentPage: number;
+  itemsPerPage: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
+interface ApiResponse {
+  history: Transaction[];
+  pagination: PaginationInfo;
+}
+
+// Функция для преобразования типа операции
+const transformType = (type: string): string => {
+  const typeMap: Record<string, string> = {
+    "reward": "Награда",
+    "release": "Разморозка",
+    "freeze": "Заморозка",
+    "commission": "Комиссия",
+    "replenish": "Пополнение"
+  };
+  return typeMap[type] || type;
+};
+
+// Функция для преобразования статуса
+const transformStatus = (status: string): string => {
+  const statusMap: Record<string, string> = {
+    "confirmed": "Подтверждено",
+    "pending": "В обработке",
+    "rejected": "Отклонено"
+  };
+  return statusMap[status] || status;
+};
+
+// Функция для форматирования даты
+const formatApiDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString);
+    return format(date, "dd.MM.yyyy HH:mm:ss", { locale: ru });
+  } catch (error) {
+    return dateString;
   }
-];
+};
 
 export default function History() {
+  const { userID } = useAuth();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
+
+  // Загрузка данных с бэкенда
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      if (!userID) return;
+      
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Формируем параметры запроса
+        const params: Record<string, string> = {
+          page: currentPage.toString(),
+          limit: pageSize.toString()
+        };
+        
+        // Добавляем фильтры, если они заданы
+        if (typeFilter && typeFilter !== "all") {
+          params.type = typeFilter;
+        }
+        
+        if (dateFrom) {
+          params.dateFrom = dateFrom.toISOString().split('T')[0];
+        }
+        
+        if (dateTo) {
+          params.dateTo = dateTo.toISOString().split('T')[0];
+        }
+        
+        const response = await apiClient.get<ApiResponse>(`/wallets/${userID}/history`, { params });
+        setTransactions(response.data.history);
+        setPagination(response.data.pagination);
+      } catch (err: any) {
+        console.error("Ошибка загрузки истории операций:", err);
+        setError(err.response?.data?.message || "Не удалось загрузить историю операций");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTransactions();
+  }, [userID, currentPage, pageSize, typeFilter, dateFrom, dateTo]);
 
   // Reset to first page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [typeFilter, dateFrom, dateTo]);
-  // Filter history based on selected filters
-  const filteredHistory = mockHistory.filter((item) => {
-    // Filter by type
-    if (typeFilter && item.type !== typeFilter) {
-      return false;
-    }
-
-    // Filter by date range
-    if (dateFrom || dateTo) {
-      const itemDate = new Date(item.date.split(' ')[0].split('.').reverse().join('-'));
-      
-      if (dateFrom && itemDate < dateFrom) {
-        return false;
-      }
-      
-      if (dateTo && itemDate > dateTo) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-  
-  const totalItems = filteredHistory.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const currentItems = filteredHistory.slice(startIndex, endIndex);
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -99,7 +137,7 @@ export default function History() {
 
   const handlePageSizeChange = (newPageSize: number) => {
     setPageSize(newPageSize);
-    setCurrentPage(1); // Reset to first page when changing page size
+    setCurrentPage(1);
   };
 
   const getStatusBadge = (status: string) => {
@@ -114,10 +152,45 @@ export default function History() {
   };
 
   const getAmountColor = (amount: string) => {
-    if (amount.startsWith("+")) return "text-success";
-    if (amount.startsWith("-")) return "text-destructive";
+    const numericAmount = parseFloat(amount);
+    if (numericAmount > 0) return "text-success";
+    if (numericAmount < 0) return "text-destructive";
     return "text-foreground";
   };
+
+  const formatAmount = (amount: string, currency: string) => {
+    const numericAmount = parseFloat(amount);
+    const sign = numericAmount > 0 ? "+" : numericAmount < 0 ? "-" : "";
+    return `${sign}${Math.abs(numericAmount)} ${currency}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-foreground">История операций</h1>
+        </div>
+        <div className="text-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Загрузка истории операций...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-foreground">История операций</h1>
+        </div>
+        <div className="text-center py-12">
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()}>Попробовать снова</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -138,11 +211,12 @@ export default function History() {
                   <SelectValue placeholder="Все типы" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Разморозка">Разморозка</SelectItem>
-                  <SelectItem value="Заморозка">Заморозка</SelectItem>
-                  <SelectItem value="Награда">Награда</SelectItem>
-                  <SelectItem value="Комиссия">Комиссия</SelectItem>
-                  <SelectItem value="Пополнение">Пополнение</SelectItem>
+                  <SelectItem value="all">Все типы</SelectItem>
+                  <SelectItem value="reward">Награда</SelectItem>
+                  <SelectItem value="release">Разморозка</SelectItem>
+                  <SelectItem value="freeze">Заморозка</SelectItem>
+                  <SelectItem value="commission">Комиссия</SelectItem>
+                  <SelectItem value="replenish">Пополнение</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -204,12 +278,12 @@ export default function History() {
             </div>
 
             {/* Clear Filters */}
-            {(typeFilter || dateFrom || dateTo) && (
+            {(typeFilter !== "all" || dateFrom || dateTo) && (
               <div className="flex flex-col justify-end">
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setTypeFilter("");
+                    setTypeFilter("all");
                     setDateFrom(undefined);
                     setDateTo(undefined);
                     setCurrentPage(1);
@@ -244,26 +318,28 @@ export default function History() {
                 </tr>
               </thead>
               <tbody>
-                {currentItems.map((item) => {
-                  const statusConfig = getStatusBadge(item.status);
+                {transactions.map((item) => {
+                  const statusConfig = getStatusBadge(transformStatus(item.status));
                   return (
                     <tr key={item.id} className="border-b border-border last:border-0 hover:bg-muted/50">
                       <td className="py-3 px-4 font-mono text-sm">{item.id}</td>
                       <td className={`py-3 px-4 font-semibold ${getAmountColor(item.amount)}`}>
-                        {item.amount}
+                        {formatAmount(item.amount, item.currency)}
                       </td>
-                      <td className="py-3 px-4">{item.type}</td>
+                      <td className="py-3 px-4">{transformType(item.type)}</td>
                       <td className="py-3 px-4">
                         <Badge 
                           variant={statusConfig.variant}
                           className={statusConfig.className}
                         >
-                          {item.status}
+                          {transformStatus(item.status)}
                         </Badge>
                       </td>
-                      <td className="py-3 px-4 text-sm text-muted-foreground">{item.date}</td>
+                      <td className="py-3 px-4 text-sm text-muted-foreground">
+                        {formatApiDate(item.createdAt)}
+                      </td>
                       <td className="py-3 px-4 text-sm text-muted-foreground max-w-xs truncate">
-                        {item.details}
+                        {item.orderId ? `Order: ${item.orderId}` : item.txHash || "—"}
                       </td>
                     </tr>
                   );
@@ -272,8 +348,15 @@ export default function History() {
             </table>
           </div>
 
+          {/* Empty state */}
+          {transactions.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">История операций пуста</p>
+            </div>
+          )}
+
           {/* Pagination */}
-          {totalItems > 0 && (
+          {pagination && pagination.totalItems > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">Показать:</span>
@@ -294,7 +377,7 @@ export default function History() {
               
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">
-                  {startIndex + 1}-{Math.min(endIndex, totalItems)} из {totalItems}
+                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, pagination.totalItems)} из {pagination.totalItems}
                 </span>
                 
                 <div className="flex items-center gap-1">
@@ -308,14 +391,14 @@ export default function History() {
                   </Button>
                   
                   {/* Page numbers */}
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                     let pageNum;
-                    if (totalPages <= 5) {
+                    if (pagination.totalPages <= 5) {
                       pageNum = i + 1;
                     } else if (currentPage <= 3) {
                       pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
+                    } else if (currentPage >= pagination.totalPages - 2) {
+                      pageNum = pagination.totalPages - 4 + i;
                     } else {
                       pageNum = currentPage - 2 + i;
                     }
@@ -333,16 +416,16 @@ export default function History() {
                     );
                   })}
                   
-                  {totalPages > 5 && currentPage < totalPages - 2 && (
+                  {pagination.totalPages > 5 && currentPage < pagination.totalPages - 2 && (
                     <>
                       <span className="text-muted-foreground">...</span>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => handlePageChange(totalPages)}
+                        onClick={() => handlePageChange(pagination.totalPages)}
                         className="w-8 h-8 p-0"
                       >
-                        {totalPages}
+                        {pagination.totalPages}
                       </Button>
                     </>
                   )}
@@ -351,18 +434,12 @@ export default function History() {
                     variant="outline"
                     size="sm"
                     onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === pagination.totalPages}
                   >
                     Вперед
                   </Button>
                 </div>
               </div>
-            </div>
-          )}
-
-          {mockHistory.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">История операций пуста</p>
             </div>
           )}
         </CardContent>

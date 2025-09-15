@@ -16,6 +16,7 @@ import {
   X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/contexts/PermissionsContext";
 
 const navigation = [
   { name: "Главная", href: "/", icon: Home },
@@ -37,6 +38,7 @@ export function Layout() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { toast } = useToast();
+  const { isAdmin } = usePermissions();
 
   const handleLogout = () => {
     logout();
@@ -89,25 +91,30 @@ export function Layout() {
               
               {/* Admin Section */}
               <div className="h-6 w-px bg-border mx-2" />
-              {adminNavigation.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.name}
-                    to={item.href}
-                    className={`
-                      flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
-                      ${isActive(item.href) 
-                        ? 'bg-primary text-primary-foreground' 
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }
-                    `}
-                  >
-                    <Icon className="mr-2 h-4 w-4" />
-                    {item.name}
-                  </NavLink>
-                );
-              })}
+              {isAdmin && ( // ⬅️ отображаем только если админ
+                <>
+                  <div className="h-6 w-px bg-border mx-2" />
+                  {adminNavigation.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.name}
+                        to={item.href}
+                        className={`
+                          flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                          ${isActive(item.href) 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }
+                        `}
+                      >
+                        <Icon className="mr-2 h-4 w-4" />
+                        {item.name}
+                      </NavLink>
+                    );
+                  })}
+                </>
+              )}
             </nav>
 
             {/* Right side - Logout */}
@@ -160,28 +167,30 @@ export function Layout() {
                 );
               })}
               
-              <div className="pt-2 mt-2 border-t border-border">
-                {adminNavigation.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <NavLink
-                      key={item.name}
-                      to={item.href}
-                      className={`
-                        flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
-                        ${isActive(item.href) 
-                          ? 'bg-primary text-primary-foreground' 
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }
-                      `}
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <Icon className="mr-3 h-5 w-5" />
-                      {item.name}
-                    </NavLink>
-                  );
-                })}
-              </div>
+              {isAdmin && ( // ⬅️ показываем только для админа
+                <div className="pt-2 mt-2 border-t border-border">
+                  {adminNavigation.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.name}
+                        to={item.href}
+                        className={`
+                          flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                          ${isActive(item.href) 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }
+                        `}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Icon className="mr-3 h-5 w-5" />
+                        {item.name}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+              )}
 
               <div className="pt-2 mt-2 border-t border-border">
                 <Button 

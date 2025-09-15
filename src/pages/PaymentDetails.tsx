@@ -14,6 +14,7 @@ import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBankDetails } from "@/hooks/useBankDetails";
 import { bankService, BankDetail } from "@/services/bankService";
+import apiClient from "@/lib/api-client";
 
 const banksList = [
   "Т-Банк",
@@ -31,37 +32,23 @@ const banksList = [
   "WebMoney"
 ];
 
-const mockDevices = [
-  {
-    id: "1", 
-    name: "Основной компьютер",
-    status: "active",
-    lastLogin: "2024-01-15 14:30:25",
-    qrCode: "device_1_qr_code_data"
-  },
-  {
-    id: "2", 
-    name: "Мобильное устройство",
-    status: "active",
-    lastLogin: "2024-01-14 09:15:42",
-    qrCode: "device_2_qr_code_data"
-  },
-  {
-    id: "3",
-    name: "Резервный ноутбук",
-    status: "inactive",
-    lastLogin: "2024-01-10 16:22:13",
-    qrCode: "device_3_qr_code_data"
-  }
-];
-
 // Функции форматирования
 const formatCardNumber = (number: string) => {
   return number.replace(/(\d{4})/g, '$1 ').trim();
 };
 
+const formatCardNumberDisplay = (cardNumber: string): string => {
+  return cardNumber.replace(/\s/g, '').replace(/(\d{4})/g, '$1 ').trim();
+};
+
 const formatPhoneNumber = (phone: string) => {
-  const match = phone.match(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/);
+  // Если номер начинается с 8, заменяем на +7
+  let processedPhone = phone;
+  if (phone.startsWith('8')) {
+    processedPhone = '+7' + phone.substring(1);
+  }
+  
+  const match = processedPhone.match(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/);
   if (!match) return phone;
   return `+7 (${match[1]}) ${match[2]}-${match[3]}-${match[4]}`;
 };
@@ -96,16 +83,30 @@ const ProgressBar = ({
 
 export default function PaymentDetails() {
   const { userID } = useAuth();
-  const { bankDetails, stats, loading, error, refetch } = useBankDetails();
+  const { 
+    bankDetails, 
+    stats, 
+    devices, 
+    loading, 
+    error, 
+    refetch, 
+    addDevice, 
+    updateDevice, 
+    deleteDevice,
+    fetchDevices // Добавляем получение функции
+  } = useBankDetails();
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detailToDelete, setDetailToDelete] = useState<BankDetail | null>(null);
+  const [banks, setBanks] = useState<Array<{code: string; name: string; nspkCode: string}>>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [banksError, setBanksError] = useState<string | null>(null);
   
-  // Devices state (оставляем моки как есть)
+  // Devices state
   const [devicesDialogOpen, setDevicesDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
-  const [devices, setDevices] = useState(mockDevices);
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [currentQrDevice, setCurrentQrDevice] = useState<string>("");
   const [deviceFormData, setDeviceFormData] = useState({
@@ -135,11 +136,35 @@ export default function PaymentDetails() {
     max_quantity_month: "",
     max_orders_simultaneosly: "",
     delay: "",
+    device_id: "unattached",
     enabled: true
   });
 
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [formLoading, setFormLoading] = useState(false);
+
+  const fetchBanks = async () => {
+    setBanksLoading(true);
+    setBanksError(null);
+    try {
+      const response = await apiClient.get('/merchant/banks');
+      setBanks(response.data);
+    } catch (error: any) {
+      console.error("Ошибка при загрузке банков:", error);
+      setBanksError(error.response?.data?.message || "Не удалось загрузить список банков");
+      toast({
+        title: "Ошибка загрузки банков",
+        description: "Не удалось загрузить список банков",
+        variant: "destructive"
+      });
+    } finally {
+      setBanksLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBanks();
+  }, []);
   
   // Filter state
   const [filters, setFilters] = useState({
@@ -149,7 +174,19 @@ export default function PaymentDetails() {
     status: "all"
   });
 
-  // Функции для работы с устройствами (оставляем как есть)
+  const handleBankChange = (bankCode: string) => {
+    const selectedBank = banks.find(bank => bank.code === bankCode);
+    if (selectedBank) {
+      setFormData(prev => ({
+        ...prev,
+        bank_code: selectedBank.code,
+        bank_name: selectedBank.name,
+        nspk_code: selectedBank.nspkCode
+      }));
+    }
+  };
+
+  // Функции для работы с устройствами
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
@@ -175,21 +212,31 @@ export default function PaymentDetails() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleDeviceEdit = (device: typeof mockDevices[0]) => {
-    setEditingDeviceId(device.id);
+  const handleDeviceEdit = (device: any) => {
+    setEditingDeviceId(device.deviceId);
     setDeviceFormData({
-      name: device.name,
-      status: device.status
+      name: device.deviceName,
+      status: device.enabled ? "active" : "inactive"
     });
     setDeviceErrors({});
   };
 
-  const handleDeviceDelete = (id: string) => {
-    setDevices(prev => prev.filter(device => device.id !== id));
-    toast({
-      title: "Устройство удалено",
-      description: "Устройство было успешно удалено из системы",
-    });
+  // Обновляем функцию handleDeviceDelete
+  const handleDeviceDelete = async (id: string) => {
+    try {
+      await deleteDevice(id);
+      toast({
+        title: "Устройство удалено",
+        description: "Устройство было успешно удалено из системы",
+      });
+    } catch (error: any) {
+      console.error("Ошибка при удалении устройства:", error);
+      toast({
+        title: "Ошибка",
+        description: error.response?.data?.message || "Не удалось удалить устройство",
+        variant: "destructive"
+      });
+    }
   };
 
   const resetDeviceForm = () => {
@@ -201,7 +248,8 @@ export default function PaymentDetails() {
     setDeviceErrors({});
   };
 
-  const handleDeviceSave = () => {
+  // Обновляем функцию handleDeviceSave
+  const handleDeviceSave = async () => {
     if (!validateDeviceForm()) {
       toast({
         title: "Ошибка",
@@ -211,35 +259,44 @@ export default function PaymentDetails() {
       return;
     }
 
-    const newDevice = {
-      id: editingDeviceId || Date.now().toString(),
-      name: deviceFormData.name,
-      status: deviceFormData.status,
-      lastLogin: new Date().toISOString().slice(0, 19).replace('T', ' '),
-      qrCode: `device_${Date.now()}_qr_code_data`
-    };
+    try {
+      if (editingDeviceId) {
+        // Редактирование существующего устройства
+        await updateDevice(editingDeviceId, {
+          deviceName: deviceFormData.name,
+          enabled: deviceFormData.status === "active"
+        });
 
-    if (editingDeviceId) {
-      setDevices(prev => prev.map(device => 
-        device.id === editingDeviceId ? newDevice : device
-      ));
+        toast({
+          title: "Устройство обновлено",
+          description: "Устройство было успешно обновлено",
+        });
+      } else {
+        // Создание нового устройства
+        await addDevice({
+          deviceName: deviceFormData.name,
+          enabled: deviceFormData.status === "active"
+        });
+
+        toast({
+          title: "Устройство добавлено",
+          description: "Новое устройство было успешно добавлено",
+        });
+      }
+
+      resetDeviceForm();
+    } catch (error: any) {
+      console.error("Ошибка при сохранении устройства:", error);
       toast({
-        title: "Устройство обновлено",
-        description: "Устройство было успешно обновлено",
-      });
-    } else {
-      setDevices(prev => [...prev, newDevice]);
-      toast({
-        title: "Устройство добавлено",
-        description: "Новое устройство было успешно добавлено",
+        title: "Ошибка",
+        description: error.response?.data?.message || "Не удалось сохранить устройство",
+        variant: "destructive"
       });
     }
-
-    resetDeviceForm();
   };
 
-  const handleShowQrCode = (device: typeof mockDevices[0]) => {
-    setCurrentQrDevice(device.name);
+  const handleShowQrCode = (device: any) => {
+    setCurrentQrDevice(device.deviceName);
     setQrDialogOpen(true);
   };
 
@@ -261,6 +318,22 @@ export default function PaymentDetails() {
     setCurrentPage(1);
   };
 
+  const cleanPhoneNumber = (phone: string): string => {
+    return phone.replace(/\D/g, '').replace(/^7/, '+7');
+  };
+
+  const formatPhoneForBackend = (phone: string): string => {
+    // Убираем все нецифровые символы
+    const cleaned = phone.replace(/\D/g, '');
+    
+    // Если номер начинается с +7, заменяем на 8
+    if (cleaned.startsWith('7')) {
+      return '8' + cleaned.substring(1);
+    }
+    
+    return cleaned;
+  };
+
   // Валидация формы
   const validateForm = () => {
     const newErrors: {[key: string]: string} = {};
@@ -269,19 +342,33 @@ export default function PaymentDetails() {
     if (!formData.owner.trim()) newErrors.owner = "Укажите имя владельца";
     if (!formData.currency) newErrors.currency = "Выберите валюту";
     if (!formData.payment_system) newErrors.payment_system = "Выберите способ оплаты";
+    // Валидация для задержки
+    if (formData.delay) {
+      const delayValue = Number(formData.delay);
+      if (isNaN(delayValue) || delayValue < 0) {
+        newErrors.delay = "Введите положительное число";
+      }
+    }
+    // Валидация устройства
+    if (formData.device_id && formData.device_id !== "unattached" && !devices.some(device => device.deviceId === formData.device_id)) {
+      newErrors.device_id = "Выбрано несуществующее устройство";
+    }
     
     // Валидация номера карты/телефона в зависимости от способа оплаты
     if (formData.payment_system === "C2C") {
-      if (!formData.card_number.trim()) {
+      const cleanedCardNumber = formData.card_number.replace(/\s/g, '');
+      if (!cleanedCardNumber) {
         newErrors.card_number = "Укажите номер карты";
-      } else if (formData.card_number.replace(/\D/g, '').length !== 16) {
+      } else if (cleanedCardNumber.length !== 16) {
         newErrors.card_number = "Номер карты должен содержать 16 цифр";
       }
+
     } else if (formData.payment_system === "SBP") {
-      if (!formData.phone.trim()) {
+      const cleanedPhone = formatPhoneForBackend(formData.phone);
+      if (!cleanedPhone) {
         newErrors.phone = "Укажите номер телефона";
-      } else if (!formData.phone.match(/^\+7\d{10}$/)) {
-        newErrors.phone = "Неверный формат телефона";
+      } else if (!/^8\d{10}$/.test(cleanedPhone)) {
+        newErrors.phone = "Неверный формат телефона (8XXXXXXXXXX)";
       }
     }
     
@@ -299,18 +386,26 @@ export default function PaymentDetails() {
       });
       return;
     }
-
+  
     setFormLoading(true);
     
     try {
+      // Подготовка данных для отправки
+      const formDataToSend = {
+        ...formData,
+        phone: formData.phone ? formatPhoneForBackend(formData.phone) : "",
+        card_number: formData.card_number ? formData.card_number.replace(/\s/g, '') : "",
+        device_id: formData.device_id === "unattached" ? "" : formData.device_id
+      };
+  
       if (editingId) {
-        await bankService.updateBankDetail({ ...formData, id: editingId });
+        await bankService.updateBankDetail({ ...formDataToSend, id: editingId });
         toast({
           title: "Реквизит обновлен",
           description: "Реквизит был успешно обновлен",
         });
       } else {
-        await bankService.createBankDetail({ ...formData, trader_id: userID });
+        await bankService.createBankDetail({ ...formDataToSend, trader_id: userID });
         toast({
           title: "Реквизит добавлен",
           description: "Новый реквизит был успешно добавлен",
@@ -372,7 +467,8 @@ export default function PaymentDetails() {
       max_quantity_month: "",
       max_orders_simultaneosly: "",
       delay: "",
-      enabled: true
+      enabled: true,
+      device_id: "unattached"
     });
     setEditingId(null);
     setErrors({});
@@ -386,8 +482,8 @@ export default function PaymentDetails() {
       payment_system: detail.payment_system,
       bank_name: detail.bank_name,
       bank_code: detail.bank_code,
-      card_number: detail.card_number || "",
-      phone: detail.phone || "",
+      card_number: detail.card_number ? formatCardNumberDisplay(detail.card_number) : "",
+      phone: detail.phone ? formatPhoneNumber(detail.phone) : "",
       owner: detail.owner,
       min_amount: detail.min_amount.toString(),
       max_amount: detail.max_amount.toString(),
@@ -396,8 +492,9 @@ export default function PaymentDetails() {
       max_quantity_day: detail.max_quantity_day.toString(),
       max_quantity_month: detail.max_quantity_month.toString(),
       max_orders_simultaneosly: detail.max_orders_simultaneosly.toString(),
-      delay: (detail.delay / 60).toString(), // Конвертируем секунды в минуты
-      enabled: detail.enabled
+      delay: (detail.delay / 60000).toString(), // Конвертируем миллисекунды в минуты
+      enabled: detail.enabled,
+      device_id: detail.device_id || "unattached",
     });
     setDialogOpen(true);
   };
@@ -506,7 +603,7 @@ export default function PaymentDetails() {
               </Button>
             </DialogTrigger>
             
-            {/* Devices Dialog (оставляем как есть) */}
+            {/* Devices Dialog */}
             <Dialog open={devicesDialogOpen} onOpenChange={(open) => {
               if (!open) {
                 resetDeviceForm();
@@ -546,20 +643,20 @@ export default function PaymentDetails() {
                           </TableRow>
                         ) : (
                           devices.map(device => (
-                            <TableRow key={device.id}>
-                              <TableCell className="font-mono text-sm">#{device.id}</TableCell>
+                            <TableRow key={device.deviceId}>
+                              <TableCell className="font-mono text-sm">#{device.deviceId}</TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  {device.status === "active" ? 
+                                  {device.enabled ? 
                                     <Smartphone className="h-4 w-4 text-green-500" /> : 
                                     <Monitor className="h-4 w-4 text-gray-400" />
                                   }
-                                  <span>{device.name}</span>
+                                  <span>{device.deviceName}</span>
                                 </div>
                               </TableCell>
                                <TableCell>
-                                 <Badge variant={device.status === "active" ? "default" : "secondary"}>
-                                   {device.status === "active" ? "Активно" : "Неактивно"}
+                                 <Badge variant={device.enabled ? "default" : "secondary"}>
+                                   {device.enabled ? "Активно" : "Неактивно"}
                                  </Badge>
                                </TableCell>
                                <TableCell>
@@ -594,7 +691,7 @@ export default function PaymentDetails() {
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>Отмена</AlertDialogCancel>
                                         <AlertDialogAction 
-                                          onClick={() => handleDeviceDelete(device.id)}
+                                          onClick={() => handleDeviceDelete(device.deviceId)}
                                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                         >
                                           Удалить
@@ -628,11 +725,26 @@ export default function PaymentDetails() {
                         />
                         {deviceErrors.name && <span className="text-red-500 text-xs">{deviceErrors.name}</span>}
                        </div>
+                       <div className="space-y-2">
+                        <Label htmlFor="deviceStatus">Статус</Label>
+                        <Select 
+                          value={deviceFormData.status} 
+                          onValueChange={value => handleDeviceInputChange("status", value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Выберите статус" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="active">Активно</SelectItem>
+                            <SelectItem value="inactive">Неактивно</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <div className="flex justify-end space-x-2 mt-4">
-                      <Button variant="outline" onClick={resetDeviceForm}>
+                      {/* <Button variant="outline" onClick={resetDeviceForm}>
                         {editingDeviceId ? "Отмена" : "Очистить"}
-                      </Button>
+                      </Button> */}
                       <Button onClick={handleDeviceSave}>
                         {editingDeviceId ? "Обновить" : "Добавить устройство"}
                       </Button>
@@ -643,7 +755,7 @@ export default function PaymentDetails() {
             </Dialog>
           </Dialog>
           
-          {/* QR Code Dialog (оставляем как есть) */}
+          {/* QR Code Dialog */}
           <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
             <DialogContent className="max-w-md">
               <DialogHeader>
@@ -744,16 +856,25 @@ export default function PaymentDetails() {
                 <div className="space-y-2">
                   <Label htmlFor="bank_name">Банк*</Label>
                   <Select 
-                    value={formData.bank_name} 
-                    onValueChange={value => handleInputChange("bank_name", value)}
+                    value={formData.bank_code} 
+                    onValueChange={handleBankChange}
+                    disabled={banksLoading || banks.length === 0}
                   >
-                    <SelectTrigger className={errors.bank_name ? "border-red-500" : ""}>
-                      <SelectValue placeholder="Выберите банк" />
+                    <SelectTrigger className={errors.bank_code ? "border-red-500" : ""}>
+                      <SelectValue placeholder={banksLoading ? "Загрузка банков..." : "Выберите банк"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {banksList.map(bank => (
-                        <SelectItem key={bank} value={bank}>{bank}</SelectItem>
-                      ))}
+                      {banksLoading ? (
+                        <SelectItem value="loading" disabled>Загрузка банков...</SelectItem>
+                      ) : banksError ? (
+                        <SelectItem value="error" disabled>{banksError}</SelectItem>
+                      ) : (
+                        banks.map(bank => (
+                          <SelectItem key={bank.code} value={bank.code}>
+                            {bank.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   {errors.bank_name && <span className="text-red-500 text-xs">{errors.bank_name}</span>}
@@ -772,17 +893,24 @@ export default function PaymentDetails() {
 
               {/* Conditional phone/card field */}
               {formData.payment_system === "C2C" ? (
-                <div className="space-y-2">
+                  <div className="space-y-2">
                   <Label htmlFor="card_number">Номер карты*</Label>
                   <Input 
-                    placeholder="0000000000000000" 
+                    placeholder="0000 0000 0000 0000" 
                     value={formData.card_number} 
                     onChange={e => {
-                      // Format card number with spaces
-                      const value = e.target.value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ').substr(0, 19);
-                      handleInputChange("card_number", value);
+                      // Убираем все нецифровые символы
+                      const value = e.target.value.replace(/\D/g, '');
+
+                      // Ограничиваем длину (16 цифр)
+                      if (value.length <= 16) {
+                        // Форматируем номер для отображения (группы по 4 цифры)
+                        const formattedValue = value.replace(/(\d{4})/g, '$1 ').trim();
+                        handleInputChange("card_number", formattedValue);
+                      }
                     }}
                     className={errors.card_number ? "border-red-500" : ""}
+                    maxLength={19} // 16 цифр + 3 пробела
                   />
                   {errors.card_number && <span className="text-red-500 text-xs">{errors.card_number}</span>}
                 </div>
@@ -790,44 +918,25 @@ export default function PaymentDetails() {
                 <div className="space-y-2">
                   <Label htmlFor="phone">Телефон*</Label>
                   <Input 
-                    placeholder="+79001234567" 
+                    placeholder="+7 (123) 456-78-90" 
                     value={formData.phone} 
                     onChange={e => {
-                      // Format phone number automatically
-                      const value = e.target.value.replace(/\D/g, '');
-                      let formattedValue = '';
+                      // Разрешаем ввод только цифр и знака +
+                      let value = e.target.value.replace(/[^\d+]/g, '');
                       
-                      if (value.length > 0) {
-                        if (value.startsWith('7') || value.startsWith('8')) {
-                          const cleanValue = value.startsWith('8') ? '7' + value.slice(1) : value;
-                          formattedValue = `+7${cleanValue.slice(1)}`;
-                          
-                          if (cleanValue.length > 1) {
-                            formattedValue = `+7 (${cleanValue.slice(1, 4)}`;
-                          }
-                          if (cleanValue.length > 4) {
-                            formattedValue += `) ${cleanValue.slice(4, 7)}`;
-                          }
-                          if (cleanValue.length > 7) {
-                            formattedValue += `-${cleanValue.slice(7, 9)}`;
-                          }
-                          if (cleanValue.length > 9) {
-                            formattedValue += `-${cleanValue.slice(9, 11)}`;
-                          }
-                        } else {
-                          formattedValue = '+7 (' + value.slice(0, 3);
-                          if (value.length > 3) {
-                            formattedValue += ') ' + value.slice(3, 6);
-                          }
-                          if (value.length > 6) {
-                            formattedValue += '-' + value.slice(6, 8);
-                          }
-                          if (value.length > 8) {
-                            formattedValue += '-' + value.slice(8, 10);
-                          }
-                        }
-                      } else if (e.target.value.startsWith('+7')) {
-                        formattedValue = '+7';
+                      // Ограничиваем длину
+                      if (value.length > 12) {
+                        value = value.substring(0, 12);
+                      }
+                      
+                      // Форматируем номер для отображения
+                      let formattedValue = value;
+                      if (value.startsWith('+7') && value.length > 2) {
+                        const numbers = value.substring(2).replace(/\D/g, '');
+                        formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
+                      } else if (value.startsWith('8') && value.length > 1) {
+                        const numbers = value.substring(1).replace(/\D/g, '');
+                        formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
                       }
                       
                       handleInputChange("phone", formattedValue);
@@ -970,6 +1079,7 @@ export default function PaymentDetails() {
                       value={formData.delay} 
                       onChange={e => {
                         const value = e.target.value;
+                        // Разрешаем только положительные числа
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
                           handleInputChange("delay", value);
                         }
@@ -978,6 +1088,32 @@ export default function PaymentDetails() {
                     />
                     {errors.delay && <span className="text-red-500 text-xs">{errors.delay}</span>}
                   </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="font-medium mb-4">Устройства</h4>
+                <div className="space-y-2">
+                  <Label htmlFor="device">Привязанное устройство</Label>
+                  <Select 
+                    value={formData.device_id} 
+                    onValueChange={value => handleInputChange("device_id", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите устройство (необязательно)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unattached">Не привязано</SelectItem>
+                      {devices.map(device => (
+                        <SelectItem key={device.deviceId} value={device.deviceId}>
+                          {device.deviceName} ({device.enabled ? "Активно" : "Неактивно"})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Привяжите устройство для дополнительной безопасности операций
+                  </p>
                 </div>
               </div>
 
@@ -1123,14 +1259,14 @@ export default function PaymentDetails() {
             ) : (
               currentData.map(detail => {
                 const detailStats = getDetailStats(detail.id);
-                const device = devices.find(d => d.id === detail.id);
+                const device = devices.find(d => d.deviceId === detail.device_id);
                 
                 return (
                   <TableRow key={detail.id}>
                     <TableCell>
                       <div className="space-y-1 text-xs">
-                        <div className="font-medium">{device?.name || "Не назначено"}</div>
-                        <div className="text-muted-foreground font-mono">#{detail.id}</div>
+                        <div className="font-medium">{device?.deviceName || "Не назначено"}</div>
+                        <div className="text-muted-foreground font-mono">#{detail.device_id || "—"}</div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -1145,13 +1281,13 @@ export default function PaymentDetails() {
                           <Building className="h-3 w-3 text-muted-foreground" />
                           <span className="text-xs">{detail.bank_name}</span>
                         </div>
-                        {detail.phone && (
+                        {detail.phone && detail.payment_system === "SBP" && (
                           <div className="flex items-center gap-1 text-sm">
                             <Phone className="h-3 w-3 text-muted-foreground" />
                             <span className="text-xs">{formatPhoneNumber(detail.phone)}</span>
                           </div>
                         )}
-                        {detail.card_number && (
+                        {detail.card_number && detail.payment_system === "C2C" && (
                           <div className="text-xs text-muted-foreground">
                             {formatCardNumber(detail.card_number)}
                           </div>
@@ -1262,6 +1398,7 @@ export default function PaymentDetails() {
                               className="h-8 text-xs"
                               onClick={() => {
                                 setDetailToDelete(detail);
+                                setDeleteDialogOpen(true);
                               }}
                             >
                               <Trash2 className="mr-1 h-3 w-3" />
