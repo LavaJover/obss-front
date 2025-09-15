@@ -1,4 +1,5 @@
-import { useState } from "react";
+// src/components/PaymentDetails.tsx
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +10,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Edit, Trash2, Phone, Building, Monitor, QrCode, Smartphone } from "lucide-react";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { useBankDetails } from "@/hooks/useBankDetails";
+import { bankService, BankDetail } from "@/services/bankService";
+
 const banksList = [
   "Т-Банк",
   "Сбербанк", 
@@ -50,388 +55,17 @@ const mockDevices = [
   }
 ];
 
-const mockPaymentDetails = [
-  {
-    id: "1",
-    system: "СБП",
-    bank: "Т-Банк",
-    phone: "+7 (828) 880-88-80",
-    owner: "Иван И.",
-    currency: "RUB",
-    minAmount: 0,
-    maxAmount: 1000000,
-    simultaneously: 2,
-    dailyAmount: 1000000,
-    monthlyAmount: 30000000,
-    maxDailyDeals: 2,
-    maxMonthlyDeals: 4,
-    delayBetweenDeals: 5,
-    todayDeals: {
-      current: 0,
-      max: 2,
-      percentage: 0
-    },
-    monthDeals: {
-      current: 1,
-      max: 4,
-      percentage: 25
-    },
-    todayAmount: {
-      current: 0,
-      max: 1000000,
-      percentage: 0
-    },
-    monthAmount: {
-      current: 5540,
-      max: 999998,
-      percentage: 0.6
-    },
-    active: true,
-    deviceId: "1"
-  },
-  {
-    id: "2",
-    system: "Карта",
-    bank: "Сбербанк",
-    phone: "+7 (903) 123-45-67",
-    owner: "Анна П.",
-    currency: "RUB",
-    minAmount: 500,
-    maxAmount: 500000,
-    simultaneously: 1,
-    dailyAmount: 2000000,
-    monthlyAmount: 50000000,
-    maxDailyDeals: 5,
-    maxMonthlyDeals: 150,
-    delayBetweenDeals: 3,
-    todayDeals: {
-      current: 3,
-      max: 5,
-      percentage: 60
-    },
-    monthDeals: {
-      current: 45,
-      max: 150,
-      percentage: 30
-    },
-    todayAmount: {
-      current: 750000,
-      max: 2000000,
-      percentage: 37.5
-    },
-    monthAmount: {
-      current: 12500000,
-      max: 50000000,
-      percentage: 25
-    },
-    active: true,
-    deviceId: "2"
-  },
-  {
-    id: "3",
-    system: "СБП",
-    bank: "ВТБ",
-    phone: "+7 (915) 987-65-43",
-    owner: "Михаил С.",
-    currency: "RUB",
-    minAmount: 100,
-    maxAmount: 800000,
-    simultaneously: 3,
-    dailyAmount: 1500000,
-    monthlyAmount: 40000000,
-    maxDailyDeals: 8,
-    maxMonthlyDeals: 200,
-    delayBetweenDeals: 2,
-    todayDeals: {
-      current: 2,
-      max: 8,
-      percentage: 25
-    },
-    monthDeals: {
-      current: 67,
-      max: 200,
-      percentage: 33.5
-    },
-    todayAmount: {
-      current: 320000,
-      max: 1500000,
-      percentage: 21.3
-    },
-    monthAmount: {
-      current: 18750000,
-      max: 40000000,
-      percentage: 46.9
-    },
-    active: false,
-    deviceId: ""
-  },
-  {
-    id: "4",
-    system: "Наличные",
-    bank: "Альфа-Банк",
-    phone: "+7 (922) 456-78-90",
-    owner: "Елена К.",
-    currency: "USD",
-    minAmount: 10,
-    maxAmount: 50000,
-    simultaneously: 1,
-    dailyAmount: 100000,
-    monthlyAmount: 2000000,
-    maxDailyDeals: 3,
-    maxMonthlyDeals: 80,
-    delayBetweenDeals: 10,
-    todayDeals: {
-      current: 1,
-      max: 3,
-      percentage: 33.3
-    },
-    monthDeals: {
-      current: 23,
-      max: 80,
-      percentage: 28.8
-    },
-    todayAmount: {
-      current: 15000,
-      max: 100000,
-      percentage: 15
-    },
-    monthAmount: {
-      current: 450000,
-      max: 2000000,
-      percentage: 22.5
-    },
-    active: true,
-    deviceId: "3"
-  },
-  {
-    id: "5",
-    system: "Карта",
-    bank: "Открытие",
-    phone: "+7 (933) 234-56-78",
-    owner: "Дмитрий В.",
-    currency: "RUB",
-    minAmount: 1000,
-    maxAmount: 300000,
-    simultaneously: 2,
-    dailyAmount: 800000,
-    monthlyAmount: 20000000,
-    maxDailyDeals: 4,
-    maxMonthlyDeals: 120,
-    delayBetweenDeals: 7,
-    todayDeals: {
-      current: 4,
-      max: 4,
-      percentage: 100
-    },
-    monthDeals: {
-      current: 89,
-      max: 120,
-      percentage: 74.2
-    },
-    todayAmount: {
-      current: 800000,
-      max: 800000,
-      percentage: 100
-    },
-    monthAmount: {
-      current: 15600000,
-      max: 20000000,
-      percentage: 78
-    },
-    active: true,
-    deviceId: ""
-  },
-  {
-    id: "6",
-    system: "СБП",
-    bank: "Газпромбанк",
-    phone: "+7 (944) 345-67-89",
-    owner: "Ольга Р.",
-    currency: "EUR",
-    minAmount: 5,
-    maxAmount: 25000,
-    simultaneously: 1,
-    dailyAmount: 75000,
-    monthlyAmount: 1500000,
-    maxDailyDeals: 6,
-    maxMonthlyDeals: 180,
-    delayBetweenDeals: 4,
-    todayDeals: {
-      current: 0,
-      max: 6,
-      percentage: 0
-    },
-    monthDeals: {
-      current: 12,
-      max: 180,
-      percentage: 6.7
-    },
-    todayAmount: {
-      current: 0,
-      max: 75000,
-      percentage: 0
-    },
-    monthAmount: {
-      current: 156000,
-      max: 1500000,
-      percentage: 10.4
-    },
-    active: false,
-    deviceId: ""
-  },
-  {
-    id: "7",
-    system: "Карта",
-    bank: "Россельхозбанк",
-    phone: "+7 (955) 456-78-91",
-    owner: "Павел Т.",
-    currency: "RUB",
-    minAmount: 200,
-    maxAmount: 400000,
-    simultaneously: 3,
-    dailyAmount: 1200000,
-    monthlyAmount: 35000000,
-    maxDailyDeals: 7,
-    maxMonthlyDeals: 210,
-    delayBetweenDeals: 6,
-    todayDeals: {
-      current: 5,
-      max: 7,
-      percentage: 71.4
-    },
-    monthDeals: {
-      current: 156,
-      max: 210,
-      percentage: 74.3
-    },
-    todayAmount: {
-      current: 890000,
-      max: 1200000,
-      percentage: 74.2
-    },
-    monthAmount: {
-      current: 28700000,
-      max: 35000000,
-      percentage: 82
-    },
-    active: true,
-    deviceId: ""
-  },
-  {
-    id: "8",
-    system: "СБП",
-    bank: "Рокетбанк",
-    phone: "+7 (966) 567-89-01",
-    owner: "Светлана Н.",
-    currency: "RUB",
-    minAmount: 50,
-    maxAmount: 600000,
-    simultaneously: 4,
-    dailyAmount: 2500000,
-    monthlyAmount: 60000000,
-    maxDailyDeals: 10,
-    maxMonthlyDeals: 300,
-    delayBetweenDeals: 1,
-    todayDeals: {
-      current: 7,
-      max: 10,
-      percentage: 70
-    },
-    monthDeals: {
-      current: 234,
-      max: 300,
-      percentage: 78
-    },
-    todayAmount: {
-      current: 1800000,
-      max: 2500000,
-      percentage: 72
-    },
-    monthAmount: {
-      current: 45000000,
-      max: 60000000,
-      percentage: 75
-    },
-    active: true,
-    deviceId: ""
-  },
-  {
-    id: "9",
-    system: "Наличные",
-    bank: "МКБ",
-    phone: "+7 (977) 678-90-12",
-    owner: "Александр М.",
-    currency: "USD",
-    minAmount: 20,
-    maxAmount: 30000,
-    simultaneously: 1,
-    dailyAmount: 80000,
-    monthlyAmount: 1800000,
-    maxDailyDeals: 4,
-    maxMonthlyDeals: 100,
-    delayBetweenDeals: 15,
-    todayDeals: {
-      current: 2,
-      max: 4,
-      percentage: 50
-    },
-    monthDeals: {
-      current: 67,
-      max: 100,
-      percentage: 67
-    },
-    todayAmount: {
-      current: 35000,
-      max: 80000,
-      percentage: 43.8
-    },
-    monthAmount: {
-      current: 1120000,
-      max: 1800000,
-      percentage: 62.2
-    },
-    active: false,
-    deviceId: ""
-  },
-  {
-    id: "10",
-    system: "Карта",
-    bank: "Райффайзенбанк",
-    phone: "+7 (988) 789-01-23",
-    owner: "Татьяна Л.",
-    currency: "RUB",
-    minAmount: 300,
-    maxAmount: 700000,
-    simultaneously: 2,
-    dailyAmount: 1800000,
-    monthlyAmount: 45000000,
-    maxDailyDeals: 6,
-    maxMonthlyDeals: 180,
-    delayBetweenDeals: 8,
-    todayDeals: {
-      current: 3,
-      max: 6,
-      percentage: 50
-    },
-    monthDeals: {
-      current: 98,
-      max: 180,
-      percentage: 54.4
-    },
-    todayAmount: {
-      current: 1200000,
-      max: 1800000,
-      percentage: 66.7
-    },
-    monthAmount: {
-      current: 32500000,
-      max: 45000000,
-      percentage: 72.2
-    },
-    active: true,
-    deviceId: ""
-  }
-];
+// Функции форматирования
+const formatCardNumber = (number: string) => {
+  return number.replace(/(\d{4})/g, '$1 ').trim();
+};
+
+const formatPhoneNumber = (phone: string) => {
+  const match = phone.match(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/);
+  if (!match) return phone;
+  return `+7 (${match[1]}) ${match[2]}-${match[3]}-${match[4]}`;
+};
+
 const ProgressBar = ({
   current,
   max,
@@ -459,12 +93,16 @@ const ProgressBar = ({
       </div>
     </div>;
 };
+
 export default function PaymentDetails() {
+  const { userID } = useAuth();
+  const { bankDetails, stats, loading, error, refetch } = useBankDetails();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [paymentDetails, setPaymentDetails] = useState(mockPaymentDetails);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [detailToDelete, setDetailToDelete] = useState<BankDetail | null>(null);
   
-  // Devices state
+  // Devices state (оставляем моки как есть)
   const [devicesDialogOpen, setDevicesDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [devices, setDevices] = useState(mockDevices);
@@ -480,35 +118,29 @@ export default function PaymentDetails() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   
-  // Pagination handlers
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-  
-  const handlePageSizeChange = (newPageSize: number) => {
-    setPageSize(newPageSize);
-    setCurrentPage(1); // Reset to first page when changing page size
-  };
+  // Form state
   const [formData, setFormData] = useState({
-    currency: "",
-    paymentMethod: "",
-    bank: "",
+    currency: "RUB",
+    payment_system: "",
+    bank_name: "",
+    bank_code: "",
+    card_number: "",
     phone: "",
-    cardNumber: "",
     owner: "",
-    minAmount: "",
-    maxAmount: "",
-    dailyAmount: "",
-    monthlyAmount: "",
-    maxDailyDeals: "",
-    maxMonthlyDeals: "",
-    simultaneousDeals: "",
-    delayBetweenDeals: "",
-    active: true,
-    deviceId: ""
+    min_amount: "",
+    max_amount: "",
+    max_amount_day: "",
+    max_amount_month: "",
+    max_quantity_day: "",
+    max_quantity_month: "",
+    max_orders_simultaneosly: "",
+    delay: "",
+    enabled: true
   });
 
   const [errors, setErrors] = useState<{[key: string]: string}>({});
+  const [formLoading, setFormLoading] = useState(false);
+  
   // Filter state
   const [filters, setFilters] = useState({
     currency: "all",
@@ -517,236 +149,14 @@ export default function PaymentDetails() {
     status: "all"
   });
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+  // Функции для работы с устройствами (оставляем как есть)
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
   };
-
-  const handleFilterChange = (filterType: string, value: string) => {
-    setFilters(prev => ({
-      ...prev,
-      [filterType]: value
-    }));
-    setCurrentPage(1); // Reset to first page when filter changes
-  };
-
-  // Apply filters to payment details
-  const filteredPaymentDetails = paymentDetails.filter(detail => {
-    if (filters.currency !== "all" && detail.currency !== filters.currency) return false;
-    if (filters.paymentMethod !== "all" && detail.system !== filters.paymentMethod) return false;
-    if (filters.paymentType !== "all") {
-      // Group payment types
-      const cardTypes = ["Карта"];
-      const cashTypes = ["Наличные"];
-      const digitalTypes = ["СБП"];
-      
-      if (filters.paymentType === "card" && !cardTypes.includes(detail.system)) return false;
-      if (filters.paymentType === "cash" && !cashTypes.includes(detail.system)) return false;
-      if (filters.paymentType === "digital" && !digitalTypes.includes(detail.system)) return false;
-    }
-    if (filters.status !== "all") {
-      if (filters.status === "active" && !detail.active) return false;
-      if (filters.status === "inactive" && detail.active) return false;
-    }
-    return true;
-  });
-
-  // Update pagination calculations to use filtered data
-  const totalItems = filteredPaymentDetails.length;
-  const totalPages = Math.ceil(totalItems / pageSize);
-  const startIndex = (currentPage - 1) * pageSize;
-  const endIndex = startIndex + pageSize;
-  const currentData = filteredPaymentDetails.slice(startIndex, endIndex);
-
-  const handleToggleStatus = (id: string) => {
-    setPaymentDetails(prev => prev.map(detail => 
-      detail.id === id ? { ...detail, active: !detail.active } : detail
-    ));
-    toast({
-      title: "Статус изменен",
-      description: "Статус реквизита был успешно изменен",
-    });
-  };
-
-  const validateForm = () => {
-    const newErrors: {[key: string]: string} = {};
-    
-    if (!formData.bank) newErrors.bank = "Выберите банк";
-    if (!formData.owner.trim()) newErrors.owner = "Укажите имя владельца";
-    if (!formData.currency) newErrors.currency = "Выберите валюту";
-    if (!formData.paymentMethod) newErrors.paymentMethod = "Выберите способ оплаты";
-    
-    // Validation for phone/card based on payment method
-    if (formData.paymentMethod === "Карта") {
-      if (!formData.cardNumber.trim()) {
-        newErrors.cardNumber = "Укажите номер карты";
-      } else if (!/^\d{4}\s\d{4}\s\d{4}\s\d{4}$/.test(formData.cardNumber)) {
-        newErrors.cardNumber = "Неверный формат номера карты (1234 5678 9012 3456)";
-      }
-    } else if (formData.paymentMethod !== "Наличные") {
-      if (!formData.phone.trim()) {
-        newErrors.phone = "Укажите номер телефона";
-      } else if (!/^\+7\s\(\d{3}\)\s\d{3}-\d{2}-\d{2}$/.test(formData.phone)) {
-        newErrors.phone = "Неверный формат телефона (+7 (123) 456-78-90)";
-      }
-    }
-    
-    // Validate positive numbers
-    const numericFields = ['minAmount', 'maxAmount', 'dailyAmount', 'monthlyAmount', 'maxDailyDeals', 'maxMonthlyDeals', 'simultaneousDeals', 'delayBetweenDeals'];
-    numericFields.forEach(field => {
-      const value = formData[field as keyof typeof formData] as string;
-      if (value && (isNaN(Number(value)) || Number(value) < 0)) {
-        newErrors[field] = "Введите положительное число";
-      }
-    });
-    
-    // Validate max > min amounts
-    if (formData.minAmount && formData.maxAmount && Number(formData.minAmount) >= Number(formData.maxAmount)) {
-      newErrors.maxAmount = "Максимальная сумма должна быть больше минимальной";
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleEdit = (detail: typeof mockPaymentDetails[0]) => {
-    setEditingId(detail.id);
-    setFormData({
-      currency: detail.currency,
-      paymentMethod: detail.system,
-      bank: detail.bank,
-      phone: detail.phone,
-      cardNumber: "",
-      owner: detail.owner,
-      minAmount: detail.minAmount.toString(),
-      maxAmount: detail.maxAmount.toString(),
-      dailyAmount: detail.dailyAmount.toString(),
-      monthlyAmount: detail.monthlyAmount.toString(),
-      maxDailyDeals: detail.maxDailyDeals.toString(),
-      maxMonthlyDeals: detail.maxMonthlyDeals.toString(),
-      simultaneousDeals: detail.simultaneously.toString(),
-      delayBetweenDeals: detail.delayBetweenDeals.toString(),
-      active: detail.active,
-      deviceId: detail.deviceId || ""
-    });
-    setErrors({});
-    setDialogOpen(true);
-  };
-
-  const handleDelete = (id: string) => {
-    setPaymentDetails(prev => prev.filter(detail => detail.id !== id));
-    toast({
-      title: "Реквизит удален",
-      description: "Реквизит был успешно удален из системы",
-    });
-  };
-
-  const resetForm = () => {
-    setFormData({
-      currency: "",
-      paymentMethod: "",
-      bank: "",
-      phone: "",
-      cardNumber: "",
-      owner: "",
-      minAmount: "",
-      maxAmount: "",
-      dailyAmount: "",
-      monthlyAmount: "",
-      maxDailyDeals: "",
-      maxMonthlyDeals: "",
-      simultaneousDeals: "",
-      delayBetweenDeals: "",
-      active: true,
-      deviceId: ""
-    });
-    setEditingId(null);
-    setErrors({});
-  };
-
-  const handleDialogClose = () => {
-    setDialogOpen(false);
-    resetForm();
-  };
-
-  const handleSave = () => {
-    if (!validateForm()) {
-      toast({
-        title: "Ошибка",
-        description: "Исправьте ошибки в форме",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    const newPaymentDetail = {
-      id: editingId || Date.now().toString(),
-      system: formData.paymentMethod,
-      bank: formData.bank,
-      phone: formData.phone || "+7 (000) 000-00-00",
-      owner: formData.owner,
-      currency: formData.currency,
-      minAmount: parseInt(formData.minAmount) || 0,
-      maxAmount: parseInt(formData.maxAmount) || 1000000,
-      simultaneously: parseInt(formData.simultaneousDeals) || 1,
-      dailyAmount: parseInt(formData.dailyAmount) || 1000000,
-      monthlyAmount: parseInt(formData.monthlyAmount) || 30000000,
-      maxDailyDeals: parseInt(formData.maxDailyDeals) || 10,
-      maxMonthlyDeals: parseInt(formData.maxMonthlyDeals) || 300,
-      delayBetweenDeals: parseInt(formData.delayBetweenDeals) || 5,
-      todayDeals: {
-        current: 0,
-        max: parseInt(formData.maxDailyDeals) || 10,
-        percentage: 0
-      },
-      monthDeals: {
-        current: 0,
-        max: parseInt(formData.maxMonthlyDeals) || 300,
-        percentage: 0
-      },
-      todayAmount: {
-        current: 0,
-        max: parseInt(formData.dailyAmount) || 1000000,
-        percentage: 0
-      },
-      monthAmount: {
-        current: 0,
-        max: parseInt(formData.monthlyAmount) || 30000000,
-        percentage: 0
-      },
-      active: formData.active,
-      deviceId: formData.deviceId
-    };
-
-    if (editingId) {
-      setPaymentDetails(prev => prev.map(detail => 
-        detail.id === editingId ? newPaymentDetail : detail
-      ));
-      toast({
-        title: "Реквизит обновлен",
-        description: "Реквизит был успешно обновлен",
-      });
-    } else {
-      setPaymentDetails(prev => [...prev, newPaymentDetail]);
-      toast({
-        title: "Реквизит добавлен",
-        description: "Новый реквизит был успешно добавлен",
-      });
-    }
-
-    handleDialogClose();
-  };
-
-  const handleToggleDeviceStatus = (id: string) => {
-    setDevices(prev => prev.map(device => 
-      device.id === id ? { ...device, status: device.status === "active" ? "inactive" : "active" } : device
-    ));
-    toast({
-      title: "Статус устройства изменен",
-      description: "Статус устройства был успешно изменен",
-    });
+  
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPageSize(newPageSize);
+    setCurrentPage(1);
   };
 
   const handleDeviceInputChange = (field: string, value: string) => {
@@ -832,7 +242,249 @@ export default function PaymentDetails() {
     setCurrentQrDevice(device.name);
     setQrDialogOpen(true);
   };
-  return <div className="space-y-6">
+
+  // Функции для работы с реквизитами
+  const handleInputChange = (field: string, value: string | boolean) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Очищаем ошибку при изменении поля
+    if (errors[field]) {
+      setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const handleFilterChange = (filterType: string, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [filterType]: value
+    }));
+    setCurrentPage(1);
+  };
+
+  // Валидация формы
+  const validateForm = () => {
+    const newErrors: {[key: string]: string} = {};
+    
+    if (!formData.bank_name) newErrors.bank_name = "Выберите банк";
+    if (!formData.owner.trim()) newErrors.owner = "Укажите имя владельца";
+    if (!formData.currency) newErrors.currency = "Выберите валюту";
+    if (!formData.payment_system) newErrors.payment_system = "Выберите способ оплаты";
+    
+    // Валидация номера карты/телефона в зависимости от способа оплаты
+    if (formData.payment_system === "C2C") {
+      if (!formData.card_number.trim()) {
+        newErrors.card_number = "Укажите номер карты";
+      } else if (formData.card_number.replace(/\D/g, '').length !== 16) {
+        newErrors.card_number = "Номер карты должен содержать 16 цифр";
+      }
+    } else if (formData.payment_system === "SBP") {
+      if (!formData.phone.trim()) {
+        newErrors.phone = "Укажите номер телефона";
+      } else if (!formData.phone.match(/^\+7\d{10}$/)) {
+        newErrors.phone = "Неверный формат телефона";
+      }
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Обработчик сохранения формы
+  const handleSave = async () => {
+    if (!validateForm()) {
+      toast({
+        title: "Ошибка",
+        description: "Исправьте ошибки в форме",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setFormLoading(true);
+    
+    try {
+      if (editingId) {
+        await bankService.updateBankDetail({ ...formData, id: editingId });
+        toast({
+          title: "Реквизит обновлен",
+          description: "Реквизит был успешно обновлен",
+        });
+      } else {
+        await bankService.createBankDetail({ ...formData, trader_id: userID });
+        toast({
+          title: "Реквизит добавлен",
+          description: "Новый реквизит был успешно добавлен",
+        });
+      }
+      
+      setDialogOpen(false);
+      refetch();
+      resetForm();
+    } catch (error: any) {
+      console.error("Ошибка при сохранении реквизита:", error);
+      toast({
+        title: "Ошибка",
+        description: error.response?.data?.message || "Не удалось сохранить реквизит",
+        variant: "destructive"
+      });
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  // Обработчик удаления реквизита
+  const handleDelete = async () => {
+    if (!detailToDelete) return;
+    
+    try {
+      await bankService.deleteBankDetail(detailToDelete.id);
+      toast({
+        title: "Реквизит удален",
+        description: "Реквизит был успешно удален",
+      });
+      setDeleteDialogOpen(false);
+      refetch();
+    } catch (error: any) {
+      console.error("Ошибка при удалении реквизита:", error);
+      toast({
+        title: "Ошибка",
+        description: error.response?.data?.message || "Не удалось удалить реквизит",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Сброс формы
+  const resetForm = () => {
+    setFormData({
+      currency: "RUB",
+      payment_system: "",
+      bank_name: "",
+      bank_code: "",
+      card_number: "",
+      phone: "",
+      owner: "",
+      min_amount: "",
+      max_amount: "",
+      max_amount_day: "",
+      max_amount_month: "",
+      max_quantity_day: "",
+      max_quantity_month: "",
+      max_orders_simultaneosly: "",
+      delay: "",
+      enabled: true
+    });
+    setEditingId(null);
+    setErrors({});
+  };
+
+  // Обработчик редактирования реквизита
+  const handleEdit = (detail: BankDetail) => {
+    setEditingId(detail.id);
+    setFormData({
+      currency: detail.currency,
+      payment_system: detail.payment_system,
+      bank_name: detail.bank_name,
+      bank_code: detail.bank_code,
+      card_number: detail.card_number || "",
+      phone: detail.phone || "",
+      owner: detail.owner,
+      min_amount: detail.min_amount.toString(),
+      max_amount: detail.max_amount.toString(),
+      max_amount_day: detail.max_amount_day.toString(),
+      max_amount_month: detail.max_amount_month.toString(),
+      max_quantity_day: detail.max_quantity_day.toString(),
+      max_quantity_month: detail.max_quantity_month.toString(),
+      max_orders_simultaneosly: detail.max_orders_simultaneosly.toString(),
+      delay: (detail.delay / 60).toString(), // Конвертируем секунды в минуты
+      enabled: detail.enabled
+    });
+    setDialogOpen(true);
+  };
+
+  // Обработчик изменения статуса реквизита
+  const handleToggleStatus = async (detail: BankDetail) => {
+    try {
+      await bankService.updateBankDetail({
+        ...detail,
+        enabled: !detail.enabled
+      });
+      toast({
+        title: "Статус изменен",
+        description: "Статус реквизита был успешно изменен",
+      });
+      refetch();
+    } catch (error: any) {
+      console.error("Ошибка при изменении статуса:", error);
+      toast({
+        title: "Ошибка",
+        description: error.response?.data?.message || "Не удалось изменить статус",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Фильтрация данных
+  const filteredPaymentDetails = bankDetails.filter(detail => {
+    if (filters.currency !== "all" && detail.currency !== filters.currency) return false;
+    if (filters.paymentMethod !== "all" && detail.payment_system !== filters.paymentMethod) return false;
+    if (filters.paymentType !== "all") {
+      // Group payment types
+      const cardTypes = ["C2C"];
+      const digitalTypes = ["SBP"];
+      
+      if (filters.paymentType === "card" && !cardTypes.includes(detail.payment_system)) return false;
+      if (filters.paymentType === "digital" && !digitalTypes.includes(detail.payment_system)) return false;
+    }
+    if (filters.status !== "all") {
+      if (filters.status === "active" && !detail.enabled) return false;
+      if (filters.status === "inactive" && detail.enabled) return false;
+    }
+    return true;
+  });
+
+  // Пагинация
+  const totalItems = filteredPaymentDetails.length;
+  const totalPages = Math.ceil(totalItems / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const currentData = filteredPaymentDetails.slice(startIndex, endIndex);
+
+  // Получение статистики для конкретного реквизита
+  const getDetailStats = (detailId: string) => {
+    return stats.find(stat => stat.bank_detail_id === detailId);
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-foreground">Реквизиты</h1>
+        </div>
+        <div className="text-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Загрузка реквизитов...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-foreground">Реквизиты</h1>
+        </div>
+        <div className="text-center py-12">
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button onClick={() => refetch()}>Попробовать снова</Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
       {/* Header */}
       <div className="space-y-4">
         <h1 className="text-3xl font-bold text-foreground">Реквизиты</h1>
@@ -843,7 +495,8 @@ export default function PaymentDetails() {
               resetForm();
               setDialogOpen(true);
             } else {
-              handleDialogClose();
+              setDialogOpen(false);
+              resetForm();
             }
           }}>
             <DialogTrigger asChild>
@@ -853,7 +506,7 @@ export default function PaymentDetails() {
               </Button>
             </DialogTrigger>
             
-            {/* Devices Dialog */}
+            {/* Devices Dialog (оставляем как есть) */}
             <Dialog open={devicesDialogOpen} onOpenChange={(open) => {
               if (!open) {
                 resetDeviceForm();
@@ -990,7 +643,7 @@ export default function PaymentDetails() {
             </Dialog>
           </Dialog>
           
-          {/* QR Code Dialog */}
+          {/* QR Code Dialog (оставляем как есть) */}
           <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
             <DialogContent className="max-w-md">
               <DialogHeader>
@@ -1036,7 +689,8 @@ export default function PaymentDetails() {
             resetForm();
             setDialogOpen(true);
           } else {
-            handleDialogClose();
+            setDialogOpen(false);
+            resetForm();
           }
         }}>
           <DialogTrigger asChild>
@@ -1050,44 +704,50 @@ export default function PaymentDetails() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="currency">Валюта*</Label>
-                  <Select value={formData.currency} onValueChange={value => handleInputChange("currency", value)}>
+                  <Select 
+                    value={formData.currency} 
+                    onValueChange={value => handleInputChange("currency", value)}
+                  >
                     <SelectTrigger className={errors.currency ? "border-red-500" : ""}>
                       <SelectValue placeholder="Выберите валюту" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="RUB">RUB</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.currency && <span className="text-red-500 text-xs">{errors.currency}</span>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="paymentMethod">Способ оплаты*</Label>
-                  <Select value={formData.paymentMethod} onValueChange={value => {
-                    handleInputChange("paymentMethod", value);
-                    // Clear phone/card when changing payment method
-                    handleInputChange("phone", "");
-                    handleInputChange("cardNumber", "");
-                  }}>
-                    <SelectTrigger className={errors.paymentMethod ? "border-red-500" : ""}>
+                  <Label htmlFor="payment_system">Способ оплаты*</Label>
+                  <Select 
+                    value={formData.payment_system} 
+                    onValueChange={value => {
+                      handleInputChange("payment_system", value);
+                      // Clear phone/card when changing payment method
+                      handleInputChange("phone", "");
+                      handleInputChange("card_number", "");
+                    }}
+                  >
+                    <SelectTrigger className={errors.payment_system ? "border-red-500" : ""}>
                       <SelectValue placeholder="Выберите способ" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="СБП">СБП</SelectItem>
-                      <SelectItem value="Карта">Карта (C2C)</SelectItem>
-                      <SelectItem value="Наличные">Наличные</SelectItem>
+                      <SelectItem value="SBP">СБП</SelectItem>
+                      <SelectItem value="C2C">Карта (C2C)</SelectItem>
                     </SelectContent>
                   </Select>
-                  {errors.paymentMethod && <span className="text-red-500 text-xs">{errors.paymentMethod}</span>}
+                  {errors.payment_system && <span className="text-red-500 text-xs">{errors.payment_system}</span>}
                 </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="bank">Банк*</Label>
-                  <Select value={formData.bank} onValueChange={value => handleInputChange("bank", value)}>
-                    <SelectTrigger className={errors.bank ? "border-red-500" : ""}>
+                  <Label htmlFor="bank_name">Банк*</Label>
+                  <Select 
+                    value={formData.bank_name} 
+                    onValueChange={value => handleInputChange("bank_name", value)}
+                  >
+                    <SelectTrigger className={errors.bank_name ? "border-red-500" : ""}>
                       <SelectValue placeholder="Выберите банк" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1096,7 +756,7 @@ export default function PaymentDetails() {
                       ))}
                     </SelectContent>
                   </Select>
-                  {errors.bank && <span className="text-red-500 text-xs">{errors.bank}</span>}
+                  {errors.bank_name && <span className="text-red-500 text-xs">{errors.bank_name}</span>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="owner">Имя владельца*</Label>
@@ -1111,26 +771,26 @@ export default function PaymentDetails() {
               </div>
 
               {/* Conditional phone/card field */}
-              {formData.paymentMethod === "Карта" ? (
+              {formData.payment_system === "C2C" ? (
                 <div className="space-y-2">
-                  <Label htmlFor="cardNumber">Номер карты*</Label>
+                  <Label htmlFor="card_number">Номер карты*</Label>
                   <Input 
-                    placeholder="1234 5678 9012 3456" 
-                    value={formData.cardNumber} 
+                    placeholder="0000000000000000" 
+                    value={formData.card_number} 
                     onChange={e => {
                       // Format card number with spaces
                       const value = e.target.value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ').substr(0, 19);
-                      handleInputChange("cardNumber", value);
+                      handleInputChange("card_number", value);
                     }}
-                    className={errors.cardNumber ? "border-red-500" : ""}
+                    className={errors.card_number ? "border-red-500" : ""}
                   />
-                  {errors.cardNumber && <span className="text-red-500 text-xs">{errors.cardNumber}</span>}
+                  {errors.card_number && <span className="text-red-500 text-xs">{errors.card_number}</span>}
                 </div>
-              ) : formData.paymentMethod !== "Наличные" ? (
+              ) : formData.payment_system === "SBP" ? (
                 <div className="space-y-2">
                   <Label htmlFor="phone">Телефон*</Label>
                   <Input 
-                    placeholder="+7 (123) 456-78-90" 
+                    placeholder="+79001234567" 
                     value={formData.phone} 
                     onChange={e => {
                       // Format phone number automatically
@@ -1188,16 +848,16 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="0" 
                       min="0"
-                      value={formData.minAmount} 
+                      value={formData.min_amount} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("minAmount", value);
+                          handleInputChange("min_amount", value);
                         }
                       }}
-                      className={errors.minAmount ? "border-red-500" : ""}
+                      className={errors.min_amount ? "border-red-500" : ""}
                     />
-                    {errors.minAmount && <span className="text-red-500 text-xs">{errors.minAmount}</span>}
+                    {errors.min_amount && <span className="text-red-500 text-xs">{errors.min_amount}</span>}
                   </div>
                   <div className="space-y-2">
                     <Label>Макс сумма сделки</Label>
@@ -1205,16 +865,16 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="1000000" 
                       min="0"
-                      value={formData.maxAmount} 
+                      value={formData.max_amount} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("maxAmount", value);
+                          handleInputChange("max_amount", value);
                         }
                       }}
-                      className={errors.maxAmount ? "border-red-500" : ""}
+                      className={errors.max_amount ? "border-red-500" : ""}
                     />
-                    {errors.maxAmount && <span className="text-red-500 text-xs">{errors.maxAmount}</span>}
+                    {errors.max_amount && <span className="text-red-500 text-xs">{errors.max_amount}</span>}
                   </div>
                   <div className="space-y-2">
                     <Label>Сумма (день)</Label>
@@ -1222,16 +882,16 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="1000000" 
                       min="0"
-                      value={formData.dailyAmount} 
+                      value={formData.max_amount_day} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("dailyAmount", value);
+                          handleInputChange("max_amount_day", value);
                         }
                       }}
-                      className={errors.dailyAmount ? "border-red-500" : ""}
+                      className={errors.max_amount_day ? "border-red-500" : ""}
                     />
-                    {errors.dailyAmount && <span className="text-red-500 text-xs">{errors.dailyAmount}</span>}
+                    {errors.max_amount_day && <span className="text-red-500 text-xs">{errors.max_amount_day}</span>}
                   </div>
                   <div className="space-y-2">
                     <Label>Сумма (месяц)</Label>
@@ -1239,16 +899,16 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="30000000" 
                       min="0"
-                      value={formData.monthlyAmount} 
+                      value={formData.max_amount_month} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("monthlyAmount", value);
+                          handleInputChange("max_amount_month", value);
                         }
                       }}
-                      className={errors.monthlyAmount ? "border-red-500" : ""}
+                      className={errors.max_amount_month ? "border-red-500" : ""}
                     />
-                    {errors.monthlyAmount && <span className="text-red-500 text-xs">{errors.monthlyAmount}</span>}
+                    {errors.max_amount_month && <span className="text-red-500 text-xs">{errors.max_amount_month}</span>}
                   </div>
                   <div className="space-y-2">
                     <Label>Макс кол-во сделок (день)</Label>
@@ -1256,16 +916,16 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="10" 
                       min="1"
-                      value={formData.maxDailyDeals} 
+                      value={formData.max_quantity_day} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("maxDailyDeals", value);
+                          handleInputChange("max_quantity_day", value);
                         }
                       }}
-                      className={errors.maxDailyDeals ? "border-red-500" : ""}
+                      className={errors.max_quantity_day ? "border-red-500" : ""}
                     />
-                    {errors.maxDailyDeals && <span className="text-red-500 text-xs">{errors.maxDailyDeals}</span>}
+                    {errors.max_quantity_day && <span className="text-red-500 text-xs">{errors.max_quantity_day}</span>}
                   </div>
                   <div className="space-y-2">
                     <Label>Макс кол-во сделок (месяц)</Label>
@@ -1273,16 +933,16 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="300" 
                       min="1"
-                      value={formData.maxMonthlyDeals} 
+                      value={formData.max_quantity_month} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("maxMonthlyDeals", value);
+                          handleInputChange("max_quantity_month", value);
                         }
                       }}
-                      className={errors.maxMonthlyDeals ? "border-red-500" : ""}
+                      className={errors.max_quantity_month ? "border-red-500" : ""}
                     />
-                    {errors.maxMonthlyDeals && <span className="text-red-500 text-xs">{errors.maxMonthlyDeals}</span>}
+                    {errors.max_quantity_month && <span className="text-red-500 text-xs">{errors.max_quantity_month}</span>}
                   </div>
                   <div className="space-y-2">
                     <Label>Сделок одновременно</Label>
@@ -1290,16 +950,16 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="2" 
                       min="1"
-                      value={formData.simultaneousDeals} 
+                      value={formData.max_orders_simultaneosly} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("simultaneousDeals", value);
+                          handleInputChange("max_orders_simultaneosly", value);
                         }
                       }}
-                      className={errors.simultaneousDeals ? "border-red-500" : ""}
+                      className={errors.max_orders_simultaneosly ? "border-red-500" : ""}
                     />
-                    {errors.simultaneousDeals && <span className="text-red-500 text-xs">{errors.simultaneousDeals}</span>}
+                    {errors.max_orders_simultaneosly && <span className="text-red-500 text-xs">{errors.max_orders_simultaneosly}</span>}
                   </div>
                   <div className="space-y-2">
                     <Label>Задержка между сделками (мин)</Label>
@@ -1307,47 +967,38 @@ export default function PaymentDetails() {
                       type="number" 
                       placeholder="5" 
                       min="0"
-                      value={formData.delayBetweenDeals} 
+                      value={formData.delay} 
                       onChange={e => {
                         const value = e.target.value;
                         if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("delayBetweenDeals", value);
+                          handleInputChange("delay", value);
                         }
                       }}
-                      className={errors.delayBetweenDeals ? "border-red-500" : ""}
+                      className={errors.delay ? "border-red-500" : ""}
                     />
-                    {errors.delayBetweenDeals && <span className="text-red-500 text-xs">{errors.delayBetweenDeals}</span>}
+                    {errors.delay && <span className="text-red-500 text-xs">{errors.delay}</span>}
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="device">Устройство</Label>
-                <Select value={formData.deviceId} onValueChange={value => handleInputChange("deviceId", value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите устройство (необязательно)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {devices.map(device => (
-                      <SelectItem key={device.id} value={device.id}>
-                        {device.name} ({device.status === "active" ? "Активно" : "Неактивно"})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               <div className="flex items-center space-x-2 pt-4 border-t">
-                <Switch id="active" checked={formData.active} onCheckedChange={value => handleInputChange("active", value)} />
-                <Label htmlFor="active">Активность</Label>
+                <Switch 
+                  id="enabled" 
+                  checked={formData.enabled} 
+                  onCheckedChange={value => handleInputChange("enabled", value)} 
+                />
+                <Label htmlFor="enabled">Активность</Label>
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
-                <Button variant="outline" onClick={handleDialogClose}>
+                <Button variant="outline" onClick={() => {
+                  setDialogOpen(false);
+                  resetForm();
+                }}>
                   Отмена
                 </Button>
-                <Button onClick={handleSave}>
-                  {editingId ? "Обновить" : "Сохранить"}
+                <Button onClick={handleSave} disabled={formLoading}>
+                  {formLoading ? "Сохранение..." : (editingId ? "Обновить" : "Сохранить")}
                 </Button>
               </div>
             </div>
@@ -1361,37 +1012,43 @@ export default function PaymentDetails() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-2">
             <Label>Валюта</Label>
-            <Select value={filters.currency} onValueChange={(value) => handleFilterChange("currency", value)}>
+            <Select 
+              value={filters.currency} 
+              onValueChange={(value) => handleFilterChange("currency", value)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Все валюты" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все валюты</SelectItem>
                 <SelectItem value="RUB">RUB</SelectItem>
-                <SelectItem value="USD">USD</SelectItem>
-                <SelectItem value="EUR">EUR</SelectItem>
               </SelectContent>
             </Select>
           </div>
           
           <div className="space-y-2">
             <Label>Способ оплаты</Label>
-            <Select value={filters.paymentMethod} onValueChange={(value) => handleFilterChange("paymentMethod", value)}>
+            <Select 
+              value={filters.paymentMethod} 
+              onValueChange={(value) => handleFilterChange("paymentMethod", value)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Все способы" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все способы</SelectItem>
-                <SelectItem value="СБП">СБП</SelectItem>
-                <SelectItem value="Карта">Карта</SelectItem>
-                <SelectItem value="Наличные">Наличные</SelectItem>
+                <SelectItem value="SBP">СБП</SelectItem>
+                <SelectItem value="C2C">Карта</SelectItem>
               </SelectContent>
             </Select>
           </div>
           
           <div className="space-y-2">
             <Label>Тип оплаты</Label>
-            <Select value={filters.paymentType} onValueChange={(value) => handleFilterChange("paymentType", value)}>
+            <Select 
+              value={filters.paymentType} 
+              onValueChange={(value) => handleFilterChange("paymentType", value)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Все типы" />
               </SelectTrigger>
@@ -1399,14 +1056,16 @@ export default function PaymentDetails() {
                 <SelectItem value="all">Все типы</SelectItem>
                 <SelectItem value="digital">Цифровые</SelectItem>
                 <SelectItem value="card">Карточные</SelectItem>
-                <SelectItem value="cash">Наличные</SelectItem>
               </SelectContent>
             </Select>
           </div>
           
           <div className="space-y-2">
             <Label>Статус</Label>
-            <Select value={filters.status} onValueChange={(value) => handleFilterChange("status", value)}>
+            <Select 
+              value={filters.status} 
+              onValueChange={(value) => handleFilterChange("status", value)}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Все статусы" />
               </SelectTrigger>
@@ -1462,153 +1121,211 @@ export default function PaymentDetails() {
                 </TableCell>
               </TableRow>
             ) : (
-              currentData.map(detail => (
-              <TableRow key={detail.id}>
-                <TableCell>
-                  <div className="space-y-1 text-xs">
-                    <div className="font-medium">{devices.find(d => d.id === detail.deviceId)?.name || "Не назначено"}</div>
-                    <div className="text-muted-foreground font-mono">#{detail.id}</div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">{detail.system}</Badge>
-                      <Badge variant="secondary" className="text-xs">{detail.currency}</Badge>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm">
-                      <Building className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs">{detail.bank}</span>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm">
-                      <Phone className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs">{detail.phone}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {detail.owner}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1 text-xs">
-                    <div className="text-muted-foreground">
-                      от {detail.minAmount.toLocaleString()} {detail.currency}
-                    </div>
-                    <div className="text-muted-foreground">
-                      до {detail.maxAmount.toLocaleString()} {detail.currency}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="text-center">
-                    <div className="text-lg font-semibold">{detail.simultaneously}</div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <ProgressBar {...detail.todayDeals} type="deals" label="День (сделки)" />
-                    </div>
-                    <div className="space-y-1">
-                      <ProgressBar {...detail.monthDeals} type="deals" label="Месяц (сделки)" />
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <ProgressBar {...detail.todayAmount} type="amount" label="День (сумма)" />
-                    </div>
-                    <div className="space-y-1">
-                      <ProgressBar {...detail.monthAmount} type="amount" label="Месяц (сумма)" />
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col items-center gap-2">
-                    <Switch 
-                      checked={detail.active} 
-                      onCheckedChange={() => handleToggleStatus(detail.id)}
-                    />
-                    <span className={`text-xs px-2 py-1 rounded-full ${detail.active ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
-                      {detail.active ? "Активен" : "Неактивен"}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="h-8 text-xs"
-                      onClick={() => handleEdit(detail)}
-                    >
-                      <Edit className="mr-1 h-3 w-3" />
-                      Изменить
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="sm" className="h-8 text-xs">
-                          <Trash2 className="mr-1 h-3 w-3" />
-                          Удалить
+              currentData.map(detail => {
+                const detailStats = getDetailStats(detail.id);
+                const device = devices.find(d => d.id === detail.id);
+                
+                return (
+                  <TableRow key={detail.id}>
+                    <TableCell>
+                      <div className="space-y-1 text-xs">
+                        <div className="font-medium">{device?.name || "Не назначено"}</div>
+                        <div className="text-muted-foreground font-mono">#{detail.id}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {detail.payment_system === "SBP" ? "СБП" : "Карта"}
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs">{detail.currency}</Badge>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm">
+                          <Building className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs">{detail.bank_name}</span>
+                        </div>
+                        {detail.phone && (
+                          <div className="flex items-center gap-1 text-sm">
+                            <Phone className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs">{formatPhoneNumber(detail.phone)}</span>
+                          </div>
+                        )}
+                        {detail.card_number && (
+                          <div className="text-xs text-muted-foreground">
+                            {formatCardNumber(detail.card_number)}
+                          </div>
+                        )}
+                        <div className="text-xs text-muted-foreground">
+                          {detail.owner}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1 text-xs">
+                        <div className="text-muted-foreground">
+                          от {detail.min_amount.toLocaleString()} {detail.currency}
+                        </div>
+                        <div className="text-muted-foreground">
+                          до {detail.max_amount.toLocaleString()} {detail.currency}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-center">
+                        <div className="text-lg font-semibold">{detail.max_orders_simultaneosly}</div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <ProgressBar 
+                            current={detailStats?.current_count_today || 0} 
+                            max={detail.max_quantity_day} 
+                            percentage={detailStats && detail.max_quantity_day > 0 
+                              ? Math.min(100, (detailStats.current_count_today / detail.max_quantity_day) * 100)
+                              : 0
+                            }
+                            type="deals" 
+                            label="День (сделки)" 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <ProgressBar 
+                            current={detailStats?.current_count_month || 0} 
+                            max={detail.max_quantity_month} 
+                            percentage={detailStats && detail.max_quantity_month > 0 
+                              ? Math.min(100, (detailStats.current_count_month / detail.max_quantity_month) * 100)
+                              : 0
+                            }
+                            type="deals" 
+                            label="Месяц (сделки)" 
+                          />
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <ProgressBar 
+                            current={detailStats?.current_amount_today || 0} 
+                            max={detail.max_amount_day} 
+                            percentage={detailStats && detail.max_amount_day > 0 
+                              ? Math.min(100, (detailStats.current_amount_today / detail.max_amount_day) * 100)
+                              : 0
+                            }
+                            type="amount" 
+                            label="День (сумма)" 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <ProgressBar 
+                            current={detailStats?.current_amount_month || 0} 
+                            max={detail.max_amount_month} 
+                            percentage={detailStats && detail.max_amount_month > 0 
+                              ? Math.min(100, (detailStats.current_amount_month / detail.max_amount_month) * 100)
+                              : 0
+                            }
+                            type="amount" 
+                            label="Месяц (сумма)" 
+                          />
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-center gap-2">
+                        <Switch 
+                          checked={detail.enabled} 
+                          onCheckedChange={() => handleToggleStatus(detail)}
+                        />
+                        <span className={`text-xs px-2 py-1 rounded-full ${detail.enabled ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>
+                          {detail.enabled ? "Активен" : "Неактивен"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-1">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="h-8 text-xs"
+                          onClick={() => handleEdit(detail)}
+                        >
+                          <Edit className="mr-1 h-3 w-3" />
+                          Изменить
                         </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Это действие нельзя отменить. Реквизит будет удален из системы навсегда.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Нет</AlertDialogCancel>
-                          <AlertDialogAction 
-                            onClick={() => handleDelete(detail.id)}
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          >
-                            Да
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </div>
-                </TableCell>
-              </TableRow>
-              ))
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button 
+                              variant="destructive" 
+                              size="sm" 
+                              className="h-8 text-xs"
+                              onClick={() => {
+                                setDetailToDelete(detail);
+                              }}
+                            >
+                              <Trash2 className="mr-1 h-3 w-3" />
+                              Удалить
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Это действие нельзя отменить. Реквизит будет удален из системы навсегда.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Нет</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={handleDelete}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Да
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
       </div>
 
-      {/* Show "no results" message when filters return empty results */}
-      {filteredPaymentDetails.length === 0 && paymentDetails.length > 0 && (
-        <div className="text-center py-8">
-          <p className="text-muted-foreground mb-4">
-            Нет реквизитов, соответствующих выбранным фильтрам
-          </p>
-          <Button 
-            variant="outline"
-            onClick={() => {
-              setFilters({
-                currency: "all",
-                paymentMethod: "all",
-                paymentType: "all",
-                status: "all"
-              });
-              setCurrentPage(1);
-            }}
-          >
-            Сбросить фильтры
-          </Button>
-        </div>
-      )}
+      {/* Диалог подтверждения удаления */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Вы уверены?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить. Реквизит будет удален из системы навсегда.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      {/* Pagination */}
+      {/* Пагинация */}
       {filteredPaymentDetails.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Показать:</span>
-            <Select value={pageSize.toString()} onValueChange={(value) => handlePageSizeChange(Number(value))}>
+            <Select 
+              value={pageSize.toString()} 
+              onValueChange={(value) => handlePageSizeChange(Number(value))}
+            >
               <SelectTrigger className="w-20">
                 <SelectValue />
               </SelectTrigger>
@@ -1691,20 +1408,17 @@ export default function PaymentDetails() {
         </div>
       )}
 
-      {paymentDetails.length === 0 && (
+      {bankDetails.length === 0 && (
         <div className="text-center py-8">
           <p className="text-muted-foreground mb-4">
             У вас пока нет добавленных реквизитов
           </p>
-          <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Добавить первый реквизит
-              </Button>
-            </DialogTrigger>
-          </Dialog>
+          <Button onClick={() => setDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Добавить первый реквизит
+          </Button>
         </div>
       )}
     </div>
+  );
 }
