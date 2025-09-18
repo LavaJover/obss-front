@@ -1,4 +1,3 @@
-// src/contexts/PermissionsContext.tsx
 import React, { createContext, useContext, useEffect, useState } from "react";
 import apiClient from "@/lib/api-client";
 import { useAuth } from "./AuthContext";
@@ -6,6 +5,7 @@ import { useAuth } from "./AuthContext";
 interface PermissionsContextType {
   checkPermission: (action: string, object: string) => Promise<boolean>;
   isAdmin: boolean;
+  isTeamLead: boolean;
 }
 
 const PermissionsContext = createContext<PermissionsContextType | undefined>(undefined);
@@ -13,29 +13,41 @@ const PermissionsContext = createContext<PermissionsContextType | undefined>(und
 export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { userID, isAuthenticated } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isTeamLead, setIsTeamLead] = useState(false);
 
-  // Проверка прав на "админку"
+  // Проверка прав на "админку" и "тимлид"
   useEffect(() => {
-    const verifyAdmin = async () => {
+    const verifyPermissions = async () => {
       if (!userID || !isAuthenticated) {
         setIsAdmin(false);
+        setIsTeamLead(false);
         return;
       }
 
       try {
-        const res = await apiClient.post("/rbac/permissions", {
+        // Проверка админских прав
+        const adminRes = await apiClient.post("/rbac/permissions", {
           action: "*",
           object: "*",
           user_id: userID,
         });
-        setIsAdmin(res.data.allowed);
+        setIsAdmin(adminRes.data.allowed);
+
+        // Проверка прав тимлида
+        const teamLeadRes = await apiClient.post("/rbac/permissions", {
+          action: "manage",
+          object: "team",
+          user_id: userID,
+        });
+        setIsTeamLead(teamLeadRes.data.allowed);
       } catch (err) {
-        console.error("Ошибка при проверке админских прав:", err);
+        console.error("Ошибка при проверке прав:", err);
         setIsAdmin(false);
+        setIsTeamLead(false);
       }
     };
 
-    verifyAdmin();
+    verifyPermissions();
   }, [userID, isAuthenticated]);
 
   // Общая функция проверки любых прав
@@ -55,7 +67,7 @@ export const PermissionsProvider: React.FC<{ children: React.ReactNode }> = ({ c
   };
 
   return (
-    <PermissionsContext.Provider value={{ checkPermission, isAdmin }}>
+    <PermissionsContext.Provider value={{ checkPermission, isAdmin, isTeamLead }}>
       {children}
     </PermissionsContext.Provider>
   );

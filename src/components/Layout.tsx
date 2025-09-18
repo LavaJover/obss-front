@@ -28,9 +28,12 @@ const navigation = [
 ];
 
 const adminNavigation = [
-  { name: "Кабинет тимлида", href: "/team-lead", icon: Crown, restricted: true },
   { name: "Админ-панель", href: "/admin", icon: Shield, restricted: true },
 ];
+
+const teamleadNavigation = [
+  { name: "Кабинет тимлида", href: "/team-lead", icon: Crown, restricted: true },
+]
 
 export function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -38,7 +41,7 @@ export function Layout() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { toast } = useToast();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, isTeamLead } = usePermissions();
 
   const handleLogout = () => {
     logout();
@@ -55,6 +58,8 @@ export function Layout() {
     }
     return location.pathname.startsWith(path);
   };
+
+  const hasRestrictedNavigation = isAdmin || isTeamLead;
 
   return (
     <div className="min-h-screen bg-background">
@@ -89,12 +94,34 @@ export function Layout() {
                 );
               })}
               
-              {/* Admin Section */}
-              <div className="h-6 w-px bg-border mx-2" />
-              {isAdmin && ( // ⬅️ отображаем только если админ
+              {/* Restricted Sections (Admin & TeamLead) */}
+              {hasRestrictedNavigation && (
                 <>
                   <div className="h-6 w-px bg-border mx-2" />
-                  {adminNavigation.map((item) => {
+                  
+                  {/* TeamLead Section */}
+                  {isTeamLead && teamleadNavigation.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.name}
+                        to={item.href}
+                        className={`
+                          flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                          ${isActive(item.href) 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }
+                        `}
+                      >
+                        <Icon className="mr-2 h-4 w-4" />
+                        {item.name}
+                      </NavLink>
+                    );
+                  })}
+                  
+                  {/* Admin Section */}
+                  {isAdmin && adminNavigation.map((item) => {
                     const Icon = item.icon;
                     return (
                       <NavLink
@@ -167,9 +194,34 @@ export function Layout() {
                 );
               })}
               
-              {isAdmin && ( // ⬅️ показываем только для админа
+              {/* Restricted Sections (Admin & TeamLead) */}
+              {(isAdmin || isTeamLead) && (
                 <div className="pt-2 mt-2 border-t border-border">
-                  {adminNavigation.map((item) => {
+                  
+                  {/* TeamLead Section */}
+                  {isTeamLead && teamleadNavigation.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <NavLink
+                        key={item.name}
+                        to={item.href}
+                        className={`
+                          flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                          ${isActive(item.href) 
+                            ? 'bg-primary text-primary-foreground' 
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }
+                        `}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <Icon className="mr-3 h-5 w-5" />
+                        {item.name}
+                      </NavLink>
+                    );
+                  })}
+                  
+                  {/* Admin Section */}
+                  {isAdmin && adminNavigation.map((item) => {
                     const Icon = item.icon;
                     return (
                       <NavLink

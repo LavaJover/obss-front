@@ -18,6 +18,7 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import { PermissionsProvider } from "./contexts/PermissionsContext";
 import AdminRoute from "./components/routes/AdminRoute";
+import TeamLeadRoute from "./components/routes/TeamLeadRoute";
 
 const queryClient = new QueryClient();
 
@@ -42,7 +43,11 @@ const App = () => (
                 <Route path="history" element={<History />} />
                 <Route path="statistics" element={<Statistics />} />
                 <Route path="settings" element={<Settings />} />
-                <Route path="team-lead" element={<TeamLead />} />
+                <Route path="team-lead" element={
+                  <TeamLeadRoute>
+                    <TeamLead />
+                  </TeamLeadRoute>
+                } />
                 <Route path="admin" element={
                   <AdminRoute>
                     <Admin />
