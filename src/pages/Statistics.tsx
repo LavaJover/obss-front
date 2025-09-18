@@ -1,14 +1,67 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, TrendingUp, TrendingDown, DollarSign, Activity } from "lucide-react";
 import { RubleIcon } from "@/components/icons/RubleIcon";
+import apiClient from "@/lib/api-client";
+
+interface StatisticsData {
+  succeed_orders: number;
+  canceled_orders: number;
+  processed_amount_crypto: number;
+  processed_amount_fiat: number;
+  canceled_amount_crypto: number;
+  canceled_amount_fiat: number;
+  income_crypto: number;
+  total_orders: number;
+}
 
 export default function Statistics() {
-  const [dateFrom, setDateFrom] = useState("2025-01-01");
-  const [dateTo, setDateTo] = useState("2025-01-31");
+  const [dateFrom, setDateFrom] = useState(() => {
+    const now = new Date();
+    return now.toISOString().split('T')[0];
+  });
+  const [dateTo, setDateTo] = useState(() => {
+    const now = new Date();
+    return now.toISOString().split('T')[0];
+  });
+  const [stats, setStats] = useState<StatisticsData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStatistics = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Преобразуем даты в объекты Date с правильным временем
+      const fromDate = new Date(dateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      
+      const toDate = new Date(dateTo);
+      toDate.setHours(23, 59, 59, 999);
+
+      const response = await apiClient.get("/orders/statistics", {
+        params: {
+          date_from: fromDate.toISOString(),
+          date_to: toDate.toISOString(),
+        },
+      });
+
+      setStats(response.data);
+    } catch (err) {
+      setError("Ошибка загрузки статистики");
+      console.error("Statistics fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatistics();
+  }, []);
 
   const setQuickFilter = (type: "day" | "week" | "month") => {
     const now = new Date();
@@ -32,29 +85,6 @@ export default function Statistics() {
         setDateFrom(monthAgo.toISOString().split('T')[0]);
         setDateTo(today.toISOString().split('T')[0]);
         break;
-    }
-  };
-
-  const stats = {
-    successful: {
-      deals: 0,
-      processed: 0
-    },
-    cancelled: {
-      deals: 0,
-      rejected: 0
-    },
-    crypto: {
-      processed: 0,
-      cancelled: 0,
-      profit: 0
-    },
-    fiat: {
-      processed: 0,
-      cancelled: 0
-    },
-    total: {
-      deals: 0
     }
   };
 
@@ -165,19 +195,29 @@ export default function Statistics() {
               />
             </div>
             <div className="flex items-end">
-              <Button className="w-full">
-                Применить фильтр
+              <Button 
+                className="w-full"
+                onClick={fetchStatistics}
+                disabled={loading}
+              >
+                {loading ? "Загрузка..." : "Применить фильтр"}
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
 
+      {error && (
+        <div className="bg-destructive/15 text-destructive rounded-lg p-4">
+          {error}
+        </div>
+      )}
+
       {/* Success Statistics - Green Theme */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Успешных сделок"
-          value={stats.successful.deals}
+          value={stats?.succeed_orders || 0}
           subtitle="Обработано заявок"
           icon={TrendingUp}
           variant="success"
@@ -185,7 +225,7 @@ export default function Statistics() {
         
         <StatCard
           title="Сумма в крипте (обработано)"
-          value={`${stats.crypto.processed} USD`}
+          value={`${stats?.processed_amount_crypto || 0} USD`}
           subtitle="Успешные заявки"
           icon={DollarSign}
           variant="success"
@@ -193,7 +233,7 @@ export default function Statistics() {
         
         <StatCard
           title="Сумма в фиате (обработано)"
-          value={`${stats.fiat.processed} ₽`}
+          value={`${stats?.processed_amount_fiat || 0} ₽`}
           subtitle="Успешные заявки"
           icon={RubleIcon}
           variant="success"
@@ -201,7 +241,7 @@ export default function Statistics() {
         
         <StatCard
           title="Прибыль в крипте"
-          value={`${stats.crypto.profit} USD`}
+          value={`${stats?.income_crypto || 0} USD`}
           subtitle="Чистая прибыль"
           icon={TrendingUp}
           variant="warning"
@@ -212,7 +252,7 @@ export default function Statistics() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Отменённых сделок"
-          value={stats.cancelled.deals}
+          value={stats?.canceled_orders || 0}
           subtitle="Отклонено заявок"
           icon={TrendingDown}
           variant="destructive"
@@ -220,7 +260,7 @@ export default function Statistics() {
         
         <StatCard
           title="Сумма в крипте (отмена)"
-          value={`${stats.crypto.cancelled} USD`}
+          value={`${stats?.canceled_amount_crypto || 0} USD`}
           subtitle="Отклонённые заявки"
           icon={DollarSign}
           variant="destructive"
@@ -228,7 +268,7 @@ export default function Statistics() {
         
         <StatCard
           title="Сумма в фиате (отмена)"
-          value={`${stats.fiat.cancelled} ₽`}
+          value={`${stats?.canceled_amount_fiat || 0} ₽`}
           subtitle="Отклонённые заявки"
           icon={RubleIcon}
           variant="destructive"
@@ -236,7 +276,7 @@ export default function Statistics() {
         
         <StatCard
           title="Всего сделок"
-          value={stats.total.deals}
+          value={stats?.total_orders || 0}
           subtitle="За период"
           icon={Activity}
           variant="default"
