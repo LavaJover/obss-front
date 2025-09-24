@@ -11,17 +11,18 @@ export const convertGoTimeToJSDate = (goTime: string): Date => {
 };
 
 // Функция для безопасного форматирования даты
+// В date-utils.tsx
 export const safeFormatDate = (
-  goTimeString: string | null | undefined, 
+  date: Date | string | null | undefined,
   formatString: string
 ): string => {
-  if (!goTimeString) return "—";
-  
+  if (!date) return "—";
+
   try {
-    const date = convertGoTimeToJSDate(goTimeString);
-    return isNaN(date.getTime()) ? "—" : format(date, formatString); // Теперь format доступна
+    const parsedDate = typeof date === "string" ? new Date(date) : date;
+    return isNaN(parsedDate.getTime()) ? "—" : format(parsedDate, formatString);
   } catch (error) {
-    console.error("Error formatting date:", error, goTimeString);
+    console.error("Error formatting date:", error, date);
     return "—";
   }
 };

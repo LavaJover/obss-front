@@ -3,94 +3,249 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
+import apiClient from "@/lib/api-client";
+
+// Типы для данных
+interface User {
+  id: string;
+  username: string;
+  role: string;
+}
+
+interface BankDetail {
+  bank_name?: string;
+  card_number?: string;
+  owner?: string;
+  payment_system?: string;
+  phone?: string;
+  trader_id?: string;
+}
+
+interface Order {
+  order_id?: string;
+  merchant_order_id?: string;
+  amount_fiat?: number;
+  amount_crypto?: number;
+  crypro_rate?: number;
+  bank_detail?: BankDetail;
+}
+
+interface Dispute {
+  accept_at?: string;
+  dispute_amount_crypto: number;
+  dispute_amount_fiat: number;
+  dispute_crypto_rate: number;
+  dispute_id: string;
+  dispute_reason: string;
+  dispute_status: string;
+  order?: Order;
+  order_id: string;
+  proof_url: string;
+}
+
+interface PaginationResponse {
+  current_page: number;
+  items_per_page: number;
+  total_items: number;
+  total_pages: number;
+}
+
+interface DisputesResponse {
+  disputes: Dispute[];
+  pagination: PaginationResponse;
+}
+
+const statusLabels: { [key: string]: string } = {
+  DISPUTE_OPENED: "Открыт",
+  DISPUTE_ACCEPTED: "Принят",
+  DISPUTE_REJECTED: "Отклонён",
+  DISPUTE_FREEZED: "Заморожен",
+};
+
+const actionLabels: { [key: string]: string } = {
+  accept: "принять",
+  reject: "отклонить",
+  freeze: "заморозить",
+};
 
 export default function DisputesTab() {
-  // Pagination state for disputes
-  const [disputesCurrentPage, setDisputesCurrentPage] = useState(1);
-  const disputesPerPage = 10;
+  // Состояния для данных
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [filters, setFilters] = useState({
+    status: "DISPUTE_OPENED",
+    traderId: "",
+    merchantId: "",
+    disputeId: "",
+    orderId: "",
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    totalPages: 1,
+    limit: 10,
+    totalItems: 0,
+  });
+  const [loading, setLoading] = useState(false);
+  const [traders, setTraders] = useState<User[]>([]);
+  const [merchants, setMerchants] = useState<User[]>([]);
+  const [timers, setTimers] = useState<{ [key: string]: number }>({});
 
-  // Mock data for disputes (in real app, this would come from API)
-  const allDisputes = [
-    {
-      id: "dfa176c4-29b6-4ffb-ad2a-035c00538892",
-      bankDetails: {
-        bank: "Т-Банк (SBP)",
-        phone: "+79815574742",
-        owner: "Бодя",
-        trader: "obsthandler"
-      },
-      dealDetails: {
-        orderId: "685a5d8e-fc6d-4f32-9c3e-9d6ba64eaee5",
-        merchantOrderId: "trip-prod-test-1",
-        amountRub: 2007,
-        amountCrypto: 25.342829,
-        rate: 79.194
-      },
-      disputeDetails: {
-        reason: "WRONG_AMOUNT",
-        status: "Открыт",
-        amountRubDispute: 2007,
-        amountCryptoDispute: 25.342829,
-        autoAccept: "Истекло"
-      }
-    },
-    {
-      id: "xyz789ab-29b6-4ffb-ad2a-035c00538123",
-      bankDetails: {
-        bank: "Сбербанк",
-        phone: "+79123456789",
-        owner: "Иван Иванов",
-        trader: "john_trader"
-      },
-      dealDetails: {
-        orderId: "abc123de-fc6d-4f32-9c3e-9d6ba64eef78",
-        merchantOrderId: "crypto-test-2",
-        amountRub: 5000,
-        amountCrypto: 62.5,
-        rate: 80.0
-      },
-      disputeDetails: {
-        reason: "PAYMENT_NOT_RECEIVED",
-        status: "Заморожен",
-        amountRubDispute: 5000,
-        amountCryptoDispute: 62.5,
-        autoAccept: "2 дня"
-      }
-    },
-    // Add more mock disputes to demonstrate pagination
-    ...Array.from({ length: 25 }, (_, i) => ({
-      id: `dispute-${i + 3}`,
-      bankDetails: {
-        bank: i % 2 === 0 ? "Сбербанк" : "Т-Банк",
-        phone: `+7912345${String(i).padStart(4, '0')}`,
-        owner: `Владелец ${i + 3}`,
-        trader: i % 3 === 0 ? "obsthandler" : i % 3 === 1 ? "john_trader" : "mike_trader"
-      },
-      dealDetails: {
-        orderId: `order-${i + 3}`,
-        merchantOrderId: `merchant-${i + 3}`,
-        amountRub: 1000 + i * 100,
-        amountCrypto: 10 + i,
-        rate: 80 + i * 0.1
-      },
-      disputeDetails: {
-        reason: i % 2 === 0 ? "WRONG_AMOUNT" : "PAYMENT_NOT_RECEIVED",
-        status: i % 3 === 0 ? "Открыт" : i % 3 === 1 ? "Заморожен" : "Закрыт",
-        amountRubDispute: 1000 + i * 100,
-        amountCryptoDispute: 10 + i,
-        autoAccept: i % 2 === 0 ? "Истекло" : `${i} дней`
-      }
-    }))
-  ];
+  // Поиск пользователя по ID
+  const findUsername = (id: string, list: User[]): string => {
+    const user = list.find((u) => u.id === id);
+    return user ? user.username : id;
+  };
 
-  // Calculate disputes pagination
-  const totalDisputes = allDisputes.length;
-  const totalDisputesPages = Math.ceil(totalDisputes / disputesPerPage);
-  const disputesStartIndex = (disputesCurrentPage - 1) * disputesPerPage;
-  const disputesEndIndex = disputesStartIndex + disputesPerPage;
-  const currentDisputes = allDisputes.slice(disputesStartIndex, disputesEndIndex);
+  // Загрузка данных
+  const fetchDisputesAndUsers = async () => {
+    setLoading(true);
+    try {
+      const params: any = {
+        page: pagination.page,
+        limit: pagination.limit,
+        status: filters.status,
+      };
+      
+      if (filters.traderId) params.traderId = filters.traderId;
+      if (filters.merchantId) params.merchantId = filters.merchantId;
+      if (filters.disputeId) params.disputeId = filters.disputeId;
+      if (filters.orderId) params.orderId = filters.orderId;
+
+      const [disputesRes, tradersRes, teamLeadsRes, merchantsRes] = await Promise.all([
+        apiClient.get<DisputesResponse>(`/admin/orders/disputes`, { params }),
+        apiClient.get<{ users: User[] }>("/admin/users?role=TRADER"),
+        apiClient.get<{ users: User[] }>("/admin/users?role=TEAM_LEAD"),
+        apiClient.get<{ users: User[] }>("/admin/users?role=MERCHANT"),
+      ]);
+      
+      const combinedTraders = [
+        ...(tradersRes.data.users || []),
+        ...(teamLeadsRes.data.users || [])
+      ];
+      
+      setDisputes(disputesRes.data.disputes || []);
+      setPagination(prev => ({
+        ...prev,
+        page: disputesRes.data.pagination?.current_page || 1,
+        totalPages: disputesRes.data.pagination?.total_pages || 1,
+        totalItems: disputesRes.data.pagination?.total_items || 0,
+      }));
+      setTraders(combinedTraders);
+      setMerchants(merchantsRes.data.users || []);
+      updateTimers(disputesRes.data.disputes || []);
+    } catch (err) {
+      toast({
+        title: "Ошибка",
+        description: "Ошибка при загрузке данных",
+        variant: "destructive",
+      });
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Обновление таймеров
+  const updateTimers = (disputesList: Dispute[]) => {
+    const now = Date.now();
+    const newTimers: { [key: string]: number } = {};
+    disputesList.forEach((d) => {
+      if (!d.accept_at) return;
+      const acceptAtMs = new Date(d.accept_at).getTime();
+      const diffMs = acceptAtMs - now;
+      newTimers[d.dispute_id] = diffMs > 0 ? diffMs : 0;
+    });
+    setTimers(newTimers);
+  };
+
+  // Форматирование времени
+  const formatMsToTime = (ms: number): string => {
+    if (ms <= 0) return "Истекло";
+    let totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    totalSeconds %= 3600;
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours.toString().padStart(2, "0")}:${minutes
+      .toString()
+      .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  // Обработка действий с диспутами
+  const handleAction = async (action: string, disputeId: string) => {
+    try {
+      await apiClient.post(`/admin/disputes/${action}`, { dispute_id: disputeId });
+      toast({
+        title: "Успех",
+        description: "Действие выполнено",
+      });
+      fetchDisputesAndUsers();
+    } catch (err) {
+      toast({
+        title: "Ошибка",
+        description: "Ошибка при выполнении действия",
+        variant: "destructive",
+      });
+      console.error(err);
+    }
+  };
+
+  // Обработчики фильтров
+  const handleFilterChange = (field: string, value: string) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  const handleLimitChange = (value: string) => {
+    const newLimit = parseInt(value, 10);
+    setPagination(prev => ({ 
+      ...prev, 
+      page: 1, 
+      limit: newLimit 
+    }));
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      status: "DISPUTE_OPENED",
+      traderId: "",
+      merchantId: "",
+      disputeId: "",
+      orderId: "",
+    });
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
+
+  // Эффекты
+  useEffect(() => {
+    fetchDisputesAndUsers();
+  }, [pagination.page, pagination.limit, filters]);
+
+  useEffect(() => {
+    if (disputes.length === 0) return;
+
+    const interval = setInterval(() => {
+      setTimers((oldTimers) => {
+        const now = Date.now();
+        const updatedTimers: { [key: string]: number } = {};
+        for (const d of disputes) {
+          if (!d.accept_at) continue;
+          const acceptAtMs = new Date(d.accept_at).getTime();
+          const diff = acceptAtMs - now;
+          updatedTimers[d.dispute_id] = diff > 0 ? diff : 0;
+        }
+        return updatedTimers;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [disputes]);
+
+  // Расчет пагинации
+  const disputesStartIndex = (pagination.page - 1) * pagination.limit;
+  const disputesEndIndex = Math.min(disputesStartIndex + pagination.limit, pagination.totalItems);
 
   return (
     <Card>
@@ -105,30 +260,44 @@ export default function DisputesTab() {
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 p-4 border rounded-lg">
           <div>
             <label className="text-sm font-medium mb-2 block">Статус</label>
-            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-              <option value="">Все статусы</option>
-              <option value="open">Открыты</option>
-              <option value="accepted">Принят</option>
-              <option value="rejected">Отклонён</option>
-              <option value="frozen">Заморожен</option>
+            <select 
+              value={filters.status}
+              onChange={(e) => handleFilterChange("status", e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {Object.entries(statusLabels).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
             </select>
           </div>
           <div>
             <label className="text-sm font-medium mb-2 block">Трейдер</label>
-            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <select 
+              value={filters.traderId}
+              onChange={(e) => handleFilterChange("traderId", e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
               <option value="">Все трейдеры</option>
-              <option value="obsthandler">obsthandler</option>
-              <option value="john_trader">john_trader</option>
-              <option value="mike_trader">mike_trader</option>
+              {traders.map(trader => (
+                <option key={trader.id} value={trader.id}>
+                  {trader.username}
+                </option>
+              ))}
             </select>
           </div>
           <div>
             <label className="text-sm font-medium mb-2 block">Мерчант</label>
-            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+            <select 
+              value={filters.merchantId}
+              onChange={(e) => handleFilterChange("merchantId", e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
               <option value="">Все мерчанты</option>
-              <option value="merchant1">biwire_finance</option>
-              <option value="merchant2">crypto_exchange</option>
-              <option value="merchant3">payment_gateway</option>
+              {merchants.map(merchant => (
+                <option key={merchant.id} value={merchant.id}>
+                  {merchant.username}
+                </option>
+              ))}
             </select>
           </div>
           <div>
@@ -136,6 +305,8 @@ export default function DisputesTab() {
             <input
               type="text"
               placeholder="Фильтр по ID диспута"
+              value={filters.disputeId}
+              onChange={(e) => handleFilterChange("disputeId", e.target.value)}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
@@ -144,198 +315,220 @@ export default function DisputesTab() {
             <input
               type="text"
               placeholder="Фильтр по ID сделки"
+              value={filters.orderId}
+              onChange={(e) => handleFilterChange("orderId", e.target.value)}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             />
           </div>
           <div>
             <label className="text-sm font-medium mb-2 block">Записей</label>
-            <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-              <option value="5">5</option>
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="50">50</option>
+            <select 
+              value={pagination.limit}
+              onChange={(e) => handleLimitChange(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {[5, 10, 20, 50].map((num) => (
+                <option key={num} value={num}>{num}</option>
+              ))}
             </select>
           </div>
         </div>
         <div className="flex justify-start">
-          <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+          <button 
+            onClick={resetFilters}
+            className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2"
+          >
             Сбросить фильтр
           </button>
         </div>
 
         {/* Disputes List */}
         <div className="space-y-4">
-          {currentDisputes.map((dispute) => (
-            <div key={dispute.id} className="border rounded-lg p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Bank Details */}
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-sm text-muted-foreground">Банковские реквизиты</h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="font-medium">Банк:</span> {dispute.bankDetails.bank}</p>
-                    <p><span className="font-medium">Телефон:</span> {dispute.bankDetails.phone}</p>
-                    <p><span className="font-medium">Владелец:</span> {dispute.bankDetails.owner}</p>
-                    <p><span className="font-medium">Trader:</span> {dispute.bankDetails.trader}</p>
+          {loading ? (
+            <div className="text-center py-4">Загрузка...</div>
+          ) : disputes.length === 0 ? (
+            <div className="text-center py-4">Нет диспутов</div>
+          ) : (
+            disputes.map((dispute) => {
+              const bank = dispute?.order?.bank_detail;
+              const order = dispute?.order;
+              const traderUsername = bank?.trader_id ? findUsername(bank.trader_id, traders) : "-";
+
+              return (
+                <div key={dispute.dispute_id} className="border rounded-lg p-6 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Bank Details */}
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm text-muted-foreground">Банковские реквизиты</h4>
+                      <div className="space-y-1 text-sm">
+                        <p><span className="font-medium">Банк:</span> {bank?.bank_name || "-"} ({bank?.payment_system || "-"})</p>
+                        <p><span className="font-medium">Телефон:</span> {bank?.phone || "-"}</p>
+                        <p><span className="font-medium">Владелец:</span> {bank?.owner || "-"}</p>
+                        <p><span className="font-medium">Trader:</span> {traderUsername}</p>
+                      </div>
+                    </div>
+
+                    {/* Deal Details */}
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm text-muted-foreground">Детали сделки</h4>
+                      <div className="space-y-1 text-sm">
+                        <p><span className="font-medium">Order ID:</span> {order?.order_id || "-"}</p>
+                        <p><span className="font-medium">Merchant Order ID:</span> {order?.merchant_order_id || "-"}</p>
+                        <p><span className="font-medium">Сумма (₽):</span> {order?.amount_fiat || "-"}</p>
+                        <p><span className="font-medium">Сумма (крипто):</span> {order?.amount_crypto?.toFixed(6) || "-"}</p>
+                        <p><span className="font-medium">Курс:</span> {order?.crypro_rate || dispute.dispute_crypto_rate || "-"}</p>
+                      </div>
+                    </div>
+
+                    {/* Dispute Details */}
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm text-muted-foreground">Детали диспута</h4>
+                      <div className="space-y-1 text-sm">
+                        <p><span className="font-medium">ID диспута:</span> {dispute.dispute_id}</p>
+                        <p><span className="font-medium">Причина:</span> {dispute.dispute_reason}</p>
+                        <p>
+                          <span className="font-medium">Статус:</span> 
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ml-2 ${
+                            dispute.dispute_status === "DISPUTE_OPENED" 
+                              ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
+                              : dispute.dispute_status === "DISPUTE_FREEZED"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
+                              : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
+                          }`}>
+                            {statusLabels[dispute.dispute_status] || dispute.dispute_status}
+                          </span>
+                        </p>
+                        <p><span className="font-medium">Сумма диспута (₽):</span> {dispute.dispute_amount_fiat}</p>
+                        <p><span className="font-medium">Сумма диспута (крипто):</span> {dispute.dispute_amount_crypto.toFixed(6)}</p>
+                        <p>
+                          <a href={dispute.proof_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                            Доказательство
+                          </a>
+                        </p>
+                        {dispute.accept_at && (
+                          <p><span className="font-medium">До автопринятия:</span> {formatMsToTime(timers[dispute.dispute_id] || 0)}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 pt-4 border-t">
+                    {(dispute.dispute_status === "DISPUTE_OPENED" || dispute.dispute_status === "DISPUTE_FREEZED") && (
+                      <>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-green-600 text-white hover:bg-green-700 h-9 px-3">
+                              Принять
+                            </button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Подтверждение действия</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Вы точно хотите принять диспут?
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Отмена</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleAction("accept", dispute.dispute_id)}>
+                                Принять диспут
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3">
+                              Отклонить
+                            </button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Подтверждение действия</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Вы точно хотите отклонить диспут?
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Отмена</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleAction("reject", dispute.dispute_id)}>
+                                Отклонить диспут
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
+                    )}
+                    {dispute.dispute_status === "DISPUTE_OPENED" && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-blue-600 text-white hover:bg-blue-700 h-9 px-3">
+                            Заморозить
+                          </button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Подтверждение действия</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Вы точно хотите заморозить диспут?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Отмена</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleAction("freeze", dispute.dispute_id)}>
+                              Заморозить диспут
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
                   </div>
                 </div>
-
-                {/* Deal Details */}
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-sm text-muted-foreground">Детали сделки</h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="font-medium">Order ID:</span> {dispute.dealDetails.orderId}</p>
-                    <p><span className="font-medium">Merchant Order ID:</span> {dispute.dealDetails.merchantOrderId}</p>
-                    <p><span className="font-medium">Сумма (₽):</span> {dispute.dealDetails.amountRub}</p>
-                    <p><span className="font-medium">Сумма (крипто):</span> {dispute.dealDetails.amountCrypto}</p>
-                    <p><span className="font-medium">Курс:</span> {dispute.dealDetails.rate}</p>
-                  </div>
-                </div>
-
-                {/* Dispute Details */}
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-sm text-muted-foreground">Детали диспута</h4>
-                  <div className="space-y-1 text-sm">
-                    <p><span className="font-medium">ID диспута:</span> {dispute.id}</p>
-                    <p><span className="font-medium">Причина:</span> {dispute.disputeDetails.reason}</p>
-                    <p><span className="font-medium">Статус:</span> 
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ml-2 ${
-                        dispute.disputeDetails.status === "Открыт" 
-                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
-                          : dispute.disputeDetails.status === "Заморожен"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"
-                          : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300"
-                      }`}>
-                        {dispute.disputeDetails.status}
-                      </span>
-                    </p>
-                    <p><span className="font-medium">Сумма диспута (₽):</span> {dispute.disputeDetails.amountRubDispute}</p>
-                    <p><span className="font-medium">Сумма диспута (крипто):</span> {dispute.disputeDetails.amountCryptoDispute}</p>
-                    <p><span className="font-medium">Доказательство</span></p>
-                    <p><span className="font-medium">До автопринятия:</span> {dispute.disputeDetails.autoAccept}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-2 pt-4 border-t">
-                {dispute.disputeDetails.status === "Открыт" && (
-                  <>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-green-600 text-white hover:bg-green-700 h-9 px-3">
-                          Закрыть
-                        </button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Подтверждение действия</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Вы точно хотите закрыть диспут?
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Отмена</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => console.log('Диспут закрыт')}>
-                            Закрыть диспут
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3">
-                          Отменить
-                        </button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Подтверждение действия</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Вы точно хотите отменить диспут?
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Отмена</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => console.log('Диспут отменен')}>
-                            Отменить диспут
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-blue-600 text-white hover:bg-blue-700 h-9 px-3">
-                          Заморозить
-                        </button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>Подтверждение действия</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Вы точно хотите заморозить диспут?
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Отмена</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => console.log('Диспут заморожен')}>
-                            Заморозить диспут
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                  </>
-                )}
-                {dispute.disputeDetails.status === "Заморожен" && (
-                  <>
-                    <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-green-600 text-white hover:bg-green-700 h-9 px-3">
-                      Завершить
-                    </button>
-                    <button className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-9 px-3">
-                      Отклонить
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
+              );
+            })
+          )}
         </div>
 
-        {/* Disputes Pagination */}
+        {/* Pagination */}
         <div className="flex items-center justify-between">
           <div className="text-sm text-muted-foreground">
-            Показано {disputesStartIndex + 1}-{Math.min(disputesEndIndex, totalDisputes)} из {totalDisputes} диспутов
+            {disputes.length > 0 ? (
+              `Показано ${disputesStartIndex + 1}-${disputesEndIndex} из ${pagination.totalItems} диспутов`
+            ) : (
+              "Нет диспутов для отображения"
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setDisputesCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={disputesCurrentPage === 1}
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.max(prev.page - 1, 1) }))}
+              disabled={pagination.page === 1}
             >
               <ChevronLeft className="h-4 w-4" />
               Назад
             </Button>
             <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalDisputesPages) }, (_, i) => {
-                let pageNum;
-                if (totalDisputesPages <= 5) {
+              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (pagination.totalPages <= 5) {
                   pageNum = i + 1;
-                } else if (disputesCurrentPage <= 3) {
+                } else if (pagination.page <= 3) {
                   pageNum = i + 1;
-                } else if (disputesCurrentPage >= totalDisputesPages - 2) {
-                  pageNum = totalDisputesPages - 4 + i;
+                } else if (pagination.page >= pagination.totalPages - 2) {
+                  pageNum = pagination.totalPages - 4 + i;
                 } else {
-                  pageNum = disputesCurrentPage - 2 + i;
+                  pageNum = pagination.page - 2 + i;
                 }
                 
                 return (
                   <Button
                     key={pageNum}
-                    variant={disputesCurrentPage === pageNum ? "default" : "outline"}
+                    variant={pagination.page === pageNum ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setDisputesCurrentPage(pageNum)}
+                    onClick={() => setPagination(prev => ({ ...prev, page: pageNum }))}
                     className="w-8 h-8 p-0"
                   >
                     {pageNum}
@@ -346,8 +539,8 @@ export default function DisputesTab() {
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => setDisputesCurrentPage(prev => Math.min(prev + 1, totalDisputesPages))}
-              disabled={disputesCurrentPage === totalDisputesPages}
+              onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.page + 1, pagination.totalPages) }))}
+              disabled={pagination.page === pagination.totalPages}
             >
               Вперёд
               <ChevronRight className="h-4 w-4" />

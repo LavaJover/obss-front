@@ -1,21 +1,35 @@
 import apiClient from '@/lib/api-client';
 
+// services/dealService.ts
+// services/dealService.ts
 export interface Deal {
   id: string;
-  device: string;
-  paymentMethod: string;
-  bank: string;
-  paymentDetails: string;
-  ownerName: string;
-  amount: string;
-  amountUSDT: string;
-  exchangeRate: string;
-  traderReward: string;
-  createdAt: string;
-  completedAt: string | null;
-  status: string;
-  // Добавляем поля из старого API
-  order_id?: string;
+  // Старые поля (для совместимости)
+  device?: string;
+  paymentMethod?: string;
+  bank?: string;
+  paymentDetails?: string;
+  ownerName?: string;
+  amount?: string;
+  amountUSDT?: string;
+  exchangeRate?: number;
+  traderReward?: string;
+  createdAt?: string | Date; // Изменено на string | Date
+  completedAt?: string | Date | null; // Изменено на string | Date | null
+  status?: string;
+  
+  // Новые поля из API
+  order_id: string;
+  merchant_order_id: string;
+  merchant_id: string;
+  amount_fiat: number;
+  amount_crypto: number;
+  crypto_rub_rate: number;
+  trader_reward: number;
+  created_at: string;
+  updated_at: string;
+  expires_at?: string;
+  
   bank_detail?: {
     bank_name: string;
     payment_system: string;
@@ -23,12 +37,10 @@ export interface Deal {
     phone?: string;
     owner: string;
     currency: string;
+    trader_id: string;
+    min_amount?: number;
+    max_amount?: number;
   };
-  amount_fiat?: number;
-  amount_crypto?: number;
-  crypto_rub_rate?: number;
-  trader_reward?: number;
-  expires_at?: string;
 }
 
 export interface DealsResponse {

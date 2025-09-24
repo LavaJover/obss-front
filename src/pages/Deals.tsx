@@ -10,7 +10,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Search, Filter, CalendarIcon, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Filter, CalendarIcon, Eye, ChevronLeft, ChevronRight, Copy, CheckCheck } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,6 +29,77 @@ const formatPhoneNumber = (phone: string) => {
   return `+7 (${match[1]}) ${match[2]}-${match[3]}-${match[4]}`;
 };
 
+// Добавьте этот хук для управления таймерами
+const useDealTimers = (deals: Deal[], activeTab: string) => {
+  const [timers, setTimers] = useState<{[key: string]: number}>({});
+
+  useEffect(() => {
+    if (activeTab !== 'active' || deals.length === 0) {
+      setTimers({});
+      return;
+    }
+
+    // Инициализируем таймеры для активных сделок
+    const initialTimers: {[key: string]: number} = {};
+    deals.forEach(deal => {
+      if (deal.expires_at) {
+        const expiresAt = new Date(deal.expires_at).getTime();
+        const now = Date.now();
+        const diffMs = expiresAt - now;
+        initialTimers[deal.id] = Math.max(0, diffMs);
+      }
+    });
+    setTimers(initialTimers);
+
+    // Запускаем интервал для обновления таймеров
+    const interval = setInterval(() => {
+      setTimers(prevTimers => {
+        const updatedTimers: {[key: string]: number} = {};
+        let hasActiveTimers = false;
+
+        Object.keys(prevTimers).forEach(dealId => {
+          const deal = deals.find(d => d.id === dealId);
+          if (deal && deal.expires_at) {
+            const expiresAt = new Date(deal.expires_at).getTime();
+            const now = Date.now();
+            const diffMs = expiresAt - now;
+            
+            if (diffMs > 0) {
+              updatedTimers[dealId] = diffMs;
+              hasActiveTimers = true;
+            } else {
+              updatedTimers[dealId] = 0;
+            }
+          }
+        });
+
+        // Если активных таймеров нет, очищаем интервал
+        if (!hasActiveTimers) {
+          clearInterval(interval);
+        }
+
+        return updatedTimers;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [deals, activeTab]);
+
+  return timers;
+};
+
+// Функция для форматирования времени обратного отсчета
+const formatCountdown = (ms: number): string => {
+  if (ms <= 0) return "00:00:00";
+  
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+};
+
 export default function Deals() {
   const [searchId, setSearchId] = useState("");
   const [minAmount, setMinAmount] = useState("");
@@ -39,6 +110,8 @@ export default function Deals() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingDeal, setApprovingDeal] = useState<string | null>(null);
+
+  const [copyStatus, setCopyStatus] = useState<{[key: string]: boolean}>({});
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -67,11 +140,12 @@ export default function Deals() {
       setLoading(true);
       try {
         // Преобразуем статусы между старой и новой системой
+        // В useEffect загрузки сделок
         let status = "";
         switch (activeTab) {
           case "active": status = "PENDING"; break;
           case "completed": status = "COMPLETED"; break;
-          case "cancelled": status = "CANCELED"; break;
+          case "cancelled": status = "CANCELED"; break; // Используем CANCELED вместо CANCELLED
           case "dispute": status = "DISPUTE"; break;
         }
         
@@ -109,39 +183,58 @@ export default function Deals() {
       PENDING: { label: "Активна", variant: "default" as const },
       COMPLETED: { label: "Завершена", variant: "secondary" as const },
       CANCELLED: { label: "Отменена", variant: "destructive" as const },
+      CANCELED: { label: "Отменена", variant: "destructive" as const },
       DISPUTE: { label: "Спор", variant: "outline" as const }
     };
-    return statusConfig[status as keyof typeof statusConfig] || statusConfig.PENDING;
+    
+    return statusConfig[status as keyof typeof statusConfig] || { label: status, variant: "outline" as const };
   };
 
+  const dealTimers = useDealTimers(deals, activeTab);
+
+  // Обновленная функция getTimeDisplay
   const getTimeDisplay = (deal: Deal, status: string) => {
     if (status === "active" && deal.expires_at) {
-      // Используем convertGoTimeToJSDate для expires_at
-      const expiresAt = convertGoTimeToJSDate(deal.expires_at);
-      if (isNaN(expiresAt.getTime())) return "—";
-      
-      const now = currentTime;
-      // Вычисляем разницу между expiresAt и now (оставшееся время)
-      const diffMs = expiresAt.getTime() - now.getTime();
-      
-      // Если время истекло, показываем 0
-      if (diffMs <= 0) {
-        return "00:00:00";
+      try {
+        const expiresAt = new Date(deal.expires_at).getTime();
+        const now = currentTime.getTime();
+        const remainingMs = expiresAt - now;
+        
+        if (remainingMs <= 0) {
+          return <span className="text-red-500 font-semibold">00:00:00</span>;
+        }
+        
+        const totalSeconds = Math.floor(remainingMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        
+        const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        return (
+          <span className={`font-mono ${
+            remainingMs < 300000 ? 'text-red-500 animate-pulse' : 
+            remainingMs < 900000 ? 'text-orange-500' : 
+            'text-green-500'
+          }`}>
+            {timeString}
+          </span>
+        );
+      } catch (error) {
+        console.error('Error calculating countdown:', error);
+        return "—";
       }
-      
-      const hours = Math.floor(diffMs / (1000 * 60 * 60));
-      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-      
-      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     } else {
-      return deal.completedAt ? safeFormatDate(deal.completedAt, "dd.MM.yyyy HH:mm:ss") : "—";
+      // Для завершенных сделок используем updated_at
+      const completedDate = deal.status === "COMPLETED" ? deal.updated_at : null;
+      return completedDate ? safeFormatDate(completedDate, "dd.MM.yyyy HH:mm:ss") : "—";
     }
   };
 
+  // Обновленная функция getTimeColumnHeader
   const getTimeColumnHeader = (status: string) => {
     switch (status) {
-      case "active": return "Таймер";
+      case "active": return "Осталось времени";
       case "completed": return "Завершено в";
       case "cancelled": return "Отменено в";
       case "dispute": return "Отменено в";
@@ -263,41 +356,130 @@ export default function Deals() {
     return items;
   };
 
-  // Функция для преобразования данных из старого формата в новый
-  const transformDealData = (deal: Deal) => {
-    // Если данные уже в новом формате, возвращаем как есть
-    if (deal.device && deal.paymentMethod) {
-      return deal;
+  const copyToClipboard = async (text: string, field: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyStatus(prev => ({ ...prev, [field]: true }));
+      setTimeout(() => {
+        setCopyStatus(prev => ({ ...prev, [field]: false }));
+      }, 2000);
+      toast({
+        title: "Скопировано",
+        description: "Текст скопирован в буфер обмена"
+      });
+    } catch (err) {
+      console.error("Ошибка при копировании:", err);
     }
+  };
+
+  const OrderIdCell = ({ orderId }: { orderId: string }) => {
+    const shortId = orderId.length > 8 ? `${orderId.substring(0, 4)}...${orderId.slice(-4)}` : orderId;
     
-    // Преобразуем из старого формата в новый
-    // Используем convertGoTimeToJSDate для преобразования дат
-    const createdAt = deal.createdAt ? convertGoTimeToJSDate(deal.createdAt).toISOString() : new Date().toISOString();
-    const completedAt = deal.completedAt ? convertGoTimeToJSDate(deal.completedAt).toISOString() : null;
-  
-    return {
-      id: deal.order_id || deal.id,
-      device: deal.device || "Устройство #1",
-      paymentMethod: deal.bank_detail?.payment_system || "",
-      bank: deal.bank_detail?.bank_name || "",
-      paymentDetails: deal.bank_detail?.card_number 
-        ? formatCardNumber(deal.bank_detail.card_number)
-        : deal.bank_detail?.phone 
-        ? formatPhoneNumber(deal.bank_detail.phone)
-        : "",
-      ownerName: deal.bank_detail?.owner || "",
-      amount: deal.amount_fiat ? `${deal.amount_fiat.toLocaleString('ru-RU')} ₽` : "",
-      amountUSDT: deal.amount_crypto ? `${deal.amount_crypto.toFixed(2)} USDT` : "",
-      exchangeRate: deal.crypto_rub_rate ? deal.crypto_rub_rate.toString() : "",
-      traderReward: deal.trader_reward 
-        ? `${(deal.amount_crypto! * deal.trader_reward).toFixed(2)} USDT` 
-        : "",
-      createdAt,
-      completedAt,
-      status: deal.status,
-      // Сохраняем оригинальные поля
-      ...deal
+    return (
+      <div 
+        className="flex items-center gap-1 text-xs font-mono cursor-pointer hover:text-foreground transition-colors"
+        onClick={() => copyToClipboard(orderId, `order-${orderId}`)}
+        title="Нажмите, чтобы скопировать ID"
+      >
+        {shortId}
+        {copyStatus[`order-${orderId}`] ? (
+          <CheckCheck className="h-3 w-3 text-green-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </div>
+    );
+  };
+
+    // Функция для преобразования данных из старого формата в новый
+      // Функция для преобразования данных из старого формата в новый
+    // Функция для преобразования данных из API в формат для отображения
+  // Функция для преобразования данных из API в формат для отображения
+  const transformDealData = (deal: Deal) => {
+    // Если данные уже в новом формате (с device и paymentMethod), возвращаем как есть
+    if (deal.device && deal.paymentMethod) {
+      return {
+        ...deal,
+        id: deal.order_id || deal.id,
+        createdAt: deal.createdAt ? (typeof deal.createdAt === 'string' ? convertGoTimeToJSDate(deal.createdAt) : deal.createdAt) : null,
+        completedAt: deal.completedAt ? (typeof deal.completedAt === 'string' ? convertGoTimeToJSDate(deal.completedAt) : deal.completedAt) : null,
+      };
+    }
+
+    // Преобразуем из формата API в формат для UI
+    const createdAt = deal.created_at 
+      ? convertGoTimeToJSDate(deal.created_at) 
+      : null;
+
+    const completedAt = deal.updated_at && deal.status === "COMPLETED" 
+      ? convertGoTimeToJSDate(deal.updated_at) 
+      : null;
+
+    // Определяем метод оплаты на основе payment_system
+    const getPaymentMethod = (system: string) => {
+      const methods: { [key: string]: string } = {
+        'SBP': 'СБП',
+        'CARD': 'Карта',
+        'BANK': 'Банковский перевод'
+      };
+      return methods[system] || system;
     };
+
+    // Форматируем реквизиты в зависимости от того, телефон это или карта
+    const formatPaymentDetails = (bankDetail: any) => {
+      if (bankDetail?.phone) {
+        return formatPhoneNumber(bankDetail.phone);
+      }
+      if (bankDetail?.card_number) {
+        return formatCardNumber(bankDetail.card_number);
+      }
+      return "—";
+    };
+
+    // Создаем объект с правильными типами
+    const transformed: Deal = {
+      ...deal,
+      id: deal.order_id,
+      device: "—",
+      paymentMethod: getPaymentMethod(deal.bank_detail?.payment_system || ""),
+      bank: deal.bank_detail?.bank_name || "",
+      paymentDetails: formatPaymentDetails(deal.bank_detail),
+      ownerName: deal.bank_detail?.owner || "",
+      amount: `${deal.amount_fiat.toLocaleString("ru-RU")} ₽`,
+      amountUSDT: `${deal.amount_crypto.toFixed(2)} USDT`,
+      exchangeRate: deal.crypto_rub_rate,
+      traderReward: `${(deal.amount_crypto * deal.trader_reward).toFixed(2)} USDT`,
+      createdAt: createdAt, // Теперь это Date, что допустимо благодаря обновленному интерфейсу
+      completedAt: completedAt, // Теперь это Date или null
+      status: deal.status,
+    };
+
+    return transformed;
+  };
+
+  // Добавьте эту функцию в date-utils.tsx или прямо в компонент
+  const formatDateTimeWithTimezone = (dateString: string): string => {
+    if (!dateString) return "—";
+    try {
+      const date = new Date(dateString);
+      // Проверяем валидность даты
+      if (isNaN(date.getTime())) return "—";
+      // Автоматически определяем часовой пояс пользователя
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      // Форматируем дату с учетом часового пояса
+      return new Intl.DateTimeFormat('ru-RU', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: timeZone
+      }).format(date);
+    } catch (error) {
+      console.error('Error formatting date with timezone:', error);
+      return "—";
+    }
   };
 
   return (
@@ -444,7 +626,7 @@ export default function Deals() {
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground">Устройство</th>
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground min-w-[320px]">Реквизиты</th>
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground">Сумма сделки</th>
-                          <th className="text-left py-3 px-4 font-medium text-muted-foreground">Создана в</th>
+                          <th className="text-left py-3 px-4 font-medium text-muted-foreground">Время открытия</th>
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground">{getTimeColumnHeader(activeTab)}</th>
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground">Действия</th>
                         </tr>
@@ -454,7 +636,7 @@ export default function Deals() {
                           const transformedDeal = transformDealData(deal);
                           return (
                             <tr key={transformedDeal.id} className="border-b border-border last:border-0 hover:bg-muted/50">
-                              <td className="py-3 px-4 font-mono text-sm whitespace-nowrap">{transformedDeal.id}</td>
+                              <td className="py-3 px-4 font-mono text-sm whitespace-nowrap"><OrderIdCell orderId={transformedDeal.id} /></td>
                               <td className="py-3 px-4 text-sm font-medium whitespace-nowrap">{transformedDeal.device}</td>
                               <td className="py-3 px-4 min-w-[320px]">
                                 <div className="space-y-1">
@@ -480,13 +662,16 @@ export default function Deals() {
                                 <div className="space-y-1">
                                   <div className="text-sm font-semibold whitespace-nowrap">{transformedDeal.amount}</div>
                                   <div className="text-sm text-success font-semibold whitespace-nowrap">{transformedDeal.amountUSDT}</div>
-                                  <div className="text-xs text-muted-foreground whitespace-nowrap">Курс: {transformedDeal.exchangeRate} ₽/USDT</div>
+                                  <div className="text-xs text-muted-foreground whitespace-nowrap">
+                                    Курс: {new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(transformedDeal.exchangeRate)} ₽/USDT
+                                  </div>
+
                                 </div>
                               </td>
                               <td className="py-3 px-4 text-sm text-muted-foreground whitespace-nowrap">
-                                {safeFormatDate(transformedDeal.createdAt, "dd.MM.yyyy HH:mm:ss")}
+                                {formatDateTimeWithTimezone(transformedDeal.created_at)}
                               </td>
-                              <td className="py-3 px-4 text-sm text-muted-foreground font-mono whitespace-nowrap">
+                              <td className="py-3 px-4 text-sm text-muted-foreground whitespace-nowrap">
                                 {getTimeDisplay(transformedDeal, activeTab)}
                               </td>
                               <td className="py-3 px-4">
@@ -534,7 +719,7 @@ export default function Deals() {
                                             <div className="space-y-2 text-sm">
                                               <div className="flex justify-between">
                                                 <span className="text-muted-foreground">ID сделки:</span>
-                                                <span className="font-mono">{transformedDeal.id}</span>
+                                                <span className="font-mono"><OrderIdCell orderId={transformedDeal.id} /></span>
                                               </div>
                                               <div className="flex justify-between">
                                                 <span className="text-muted-foreground">Статус:</span>
@@ -568,7 +753,7 @@ export default function Deals() {
                                               </div>
                                               <div className="flex justify-between">
                                                 <span className="text-muted-foreground">Курс обмена:</span>
-                                                <span>{transformedDeal.exchangeRate} ₽/USDT</span>
+                                                <span>{new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(transformedDeal.exchangeRate)} ₽/USDT</span>
                                               </div>
                                               <div className="flex justify-between">
                                                 <span className="text-muted-foreground">Награда трейдера:</span>
