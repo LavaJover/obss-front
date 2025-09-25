@@ -16,8 +16,6 @@ import {
   ChevronRight 
 } from "lucide-react";
 
-import TradersTab from "@/components/admin/Traders";
-import MerchantsTab from "@/components/admin/Merchants";
 import TrafficTab from "@/components/admin/Traffic";
 import WalletsTab from "@/components/admin/Wallets";
 import DisputesTab from "@/components/admin/Disputes";
@@ -27,6 +25,7 @@ import SettleSettingsTab from "@/components/admin/SettleSettings";
 import TeamsTab from "@/components/admin/Teams";
 import TraderStatsTab from "@/components/admin/TraderStats";
 import PaymentDetailsTab from "@/components/admin/PaymentDetails";
+import UsersMainTab from "@/components/admin/users/UsersMainTab";
 
 
 export default function Admin() {
@@ -43,13 +42,9 @@ export default function Admin() {
       {/* Admin Tabs */}
       <Tabs defaultValue="traders" className="w-full">
         <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:grid-cols-11 gap-0.5 sm:gap-1 h-auto p-1">
-          <TabsTrigger value="traders" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
+          <TabsTrigger value="users" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
             <Users className="h-4 w-4 sm:h-3 sm:w-3" />
-            <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Трейдеры</span>
-          </TabsTrigger>
-          <TabsTrigger value="merchants" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
-            <Building2 className="h-4 w-4 sm:h-3 sm:w-3" />
-            <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Мерчанты</span>
+            <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Пользователи</span>
           </TabsTrigger>
           <TabsTrigger value="traffic" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
             <TrendingUp className="h-4 w-4 sm:h-3 sm:w-3" />
@@ -89,12 +84,8 @@ export default function Admin() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="traders" className="mt-6">
-          <TradersTab />
-        </TabsContent>
-
-        <TabsContent value="merchants" className="mt-6">
-          <MerchantsTab />
+        <TabsContent value="users" className="mt-6">
+          <UsersMainTab />
         </TabsContent>
 
         <TabsContent value="traffic" className="mt-6">

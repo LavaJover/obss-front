@@ -1,11 +1,11 @@
 import axios from 'axios';
 import { toast } from '@/hooks/use-toast';
 
-export const API_BASE_URL = 'http://localhost:8080/api/v1';
+const apiUrl = import.meta.env.VITE_API_URL;
 
 // Создаем экземпляр axios
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: `${apiUrl}/api/v1`,
   headers: {
     'Content-Type': 'application/json',
   },
