@@ -8,27 +8,29 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Shield, Smartphone, QrCode, Copy, RotateCcw, AlertTriangle, CheckCircle, Download } from "lucide-react";
 import QRCode from "qrcode";
+import apiClient from "@/lib/api-client";
 
 export default function Settings() {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [setupStep, setSetupStep] = useState<'disabled' | 'setup' | 'verify' | 'complete'>('disabled');
-  const [secretKey, setSecretKey] = useState("JBSWY3DPEHPK3PXP");
+  const [secretKey, setSecretKey] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
-  const [backupCodes, setBackupCodes] = useState([
-    "a1b2c3d4", "e5f6g7h8", "i9j0k1l2", 
-    "m3n4o5p6", "q7r8s9t0", "u1v2w3x4",
-    "y5z6a7b8", "c9d0e1f2"
-  ]);
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // Generate QR code when secret key changes
-  useEffect(() => {
-    const generateQRCode = async () => {
-      try {
-        const appName = "CryptoPlatform";
-        const userEmail = "user@example.com";
-        const otpauth = `otpauth://totp/${appName}:${userEmail}?secret=${secretKey}&issuer=${appName}`;
-        const qrCodeDataUrl = await QRCode.toDataURL(otpauth, {
+  // Запрос к бэкенду для настройки 2FA
+  const setup2FA = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const resp = await apiClient.post('/2fa/setup');
+      setSecretKey(resp.data.secret_key || "JBSWY3DPEHPK3PXP");
+      
+      if (resp.data.qr_url) {
+        const qrCodeDataUrl = await QRCode.toDataURL(resp.data.qr_url, {
           width: 256,
           margin: 2,
           color: {
@@ -37,44 +39,64 @@ export default function Settings() {
           }
         });
         setQrCodeUrl(qrCodeDataUrl);
-      } catch (error) {
-        console.error('Error generating QR code:', error);
       }
-    };
-
-    if (secretKey) {
-      generateQRCode();
+    } catch (err) {
+      setError('Ошибка при загрузке QR-кода');
+      console.error('2FA setup error:', err);
+    } finally {
+      setLoading(false);
     }
-  }, [secretKey]);
+  };
 
-  const handleEnable2FA = () => {
+  // Включение 2FA
+  const handleEnable2FA = async () => {
     if (!twoFactorEnabled) {
       setSetupStep('setup');
-    } else {
-      // Disable 2FA
-      setTwoFactorEnabled(false);
-      setSetupStep('disabled');
+      await setup2FA();
+    }
+    // Убрана возможность выключения 2FA
+  };
+
+  // Верификация кода
+  const handleVerification = async () => {
+    if (verificationCode.length !== 6) return;
+
+    try {
+      setLoading(true);
+      setError("");
+      const resp = await apiClient.post('/2fa/verify', { code: verificationCode });
+      
+      if (resp.status === 200) {
+        setTwoFactorEnabled(true);
+        setSetupStep('complete');
+        setSuccess(true);
+        setError("");
+      }
+    } catch (err: any) {
+      setSuccess(false);
+      setError('Неверный код. Попробуйте снова.');
+      console.error('2FA verification error:', err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleVerification = () => {
-    if (verificationCode.length === 6) {
-      setTwoFactorEnabled(true);
-      setSetupStep('complete');
-      setVerificationCode("");
-    }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
+  // Генерация резервных кодов (мок)
   const generateNewBackupCodes = () => {
     const newCodes = Array.from({length: 8}, () => 
       Math.random().toString(36).substring(2, 10)
     );
     setBackupCodes(newCodes);
   };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  // Инициализация резервных кодов
+  useEffect(() => {
+    generateNewBackupCodes();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -117,11 +139,16 @@ export default function Settings() {
                 }
               </p>
             </div>
-            <Switch
-              checked={twoFactorEnabled}
-              onCheckedChange={handleEnable2FA}
-              className="data-[state=checked]:bg-emerald-600"
-            />
+            
+            {/* Switch только для включения 2FA */}
+            {!twoFactorEnabled && (
+              <Switch
+                checked={twoFactorEnabled}
+                onCheckedChange={handleEnable2FA}
+                disabled={loading}
+                className="data-[state=checked]:bg-emerald-600"
+              />
+            )}
           </div>
 
           {/* Setup Process */}
@@ -134,17 +161,23 @@ export default function Settings() {
                 </p>
               </div>
 
-              {/* QR Code Placeholder */}
+              {/* QR Code */}
               <div className="flex justify-center">
                 <div className="p-4 bg-white rounded-lg border-2 border-primary/20 shadow-sm">
-                  {qrCodeUrl ? (
+                  {loading ? (
+                    <div className="w-48 h-48 flex items-center justify-center">
+                      <QrCode className="h-12 w-12 text-muted-foreground animate-pulse" />
+                    </div>
+                  ) : qrCodeUrl ? (
                     <img 
                       src={qrCodeUrl} 
                       alt="2FA QR Code" 
                       className="w-48 h-48 mx-auto"
                     />
                   ) : (
-                    <QrCode className="h-48 w-48 text-muted-foreground animate-pulse" />
+                    <div className="w-48 h-48 flex items-center justify-center text-muted-foreground">
+                      Ошибка загрузки QR-кода
+                    </div>
                   )}
                 </div>
               </div>
@@ -180,16 +213,25 @@ export default function Settings() {
                     onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     className="text-center font-mono text-lg tracking-widest"
                     maxLength={6}
+                    disabled={loading}
                   />
                   <Button 
                     onClick={handleVerification}
-                    disabled={verificationCode.length !== 6}
+                    disabled={verificationCode.length !== 6 || loading}
                     className="bg-emerald-600 hover:bg-emerald-700"
                   >
-                    Подтвердить
+                    {loading ? "Проверка..." : "Подтвердить"}
                   </Button>
                 </div>
               </div>
+
+              {/* Error Message */}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
               <Alert>
                 <AlertTriangle className="h-4 w-4" />

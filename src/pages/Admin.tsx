@@ -71,10 +71,10 @@ export default function Admin() {
             <MessageSquare className="h-4 w-4 sm:h-3 sm:w-3" />
             <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Телеграм</span>
           </TabsTrigger>
-          <TabsTrigger value="settle-settings" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
+          {/* <TabsTrigger value="settle-settings" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
             <Settings className="h-4 w-4 sm:h-3 sm:w-3" />
             <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Settle</span>
-          </TabsTrigger>
+          </TabsTrigger> */}
           <TabsTrigger value="teams" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
             <Command className="h-4 w-4 sm:h-3 sm:w-3" />
             <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Команды</span>

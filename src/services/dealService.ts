@@ -72,11 +72,11 @@ export const dealService = {
       };
   
       if (filters.status) params.status = filters.status;
-      if (filters.searchId) params.search = filters.searchId;
+      if (filters.searchId) params.order_id = filters.searchId;
       if (filters.minAmount) params.min_amount = filters.minAmount;
       if (filters.maxAmount) params.max_amount = filters.maxAmount;
       if (filters.dateFrom) params.date_from = filters.dateFrom.toISOString();
-      if (filters.dateTo) params.dateTo = filters.dateTo.toISOString();
+      if (filters.dateTo) params.date_to = filters.dateTo.toISOString();
   
       const response = await apiClient.get<DealsResponse>(`/orders/trader/${userID}`, { params });
       return response.data;

@@ -226,7 +226,7 @@ export default function Deals() {
       }
     } else {
       // Для завершенных сделок используем updated_at
-      const completedDate = deal.status === "COMPLETED" ? deal.updated_at : null;
+      const completedDate = deal.status === "COMPLETED" || deal.status === "CANCELED"? deal.updated_at : null;
       return completedDate ? safeFormatDate(completedDate, "dd.MM.yyyy HH:mm:ss") : "—";
     }
   };

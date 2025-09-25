@@ -6,11 +6,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { walletService } from "@/services/walletService";
 import { useToast } from "@/hooks/use-toast";
+import apiClient from "@/lib/api-client";
 
 export default function Dashboard() {
   const [trafficEnabled, setTrafficEnabled] = useState(true);
   const [balance, setBalance] = useState(0);
   const [frozenBalance, setFrozenBalance] = useState(0);
+  const [teamName, setTeamName] = useState("Alpha"); // По умолчанию Alpha
   const [loading, setLoading] = useState(true);
   const { userID, logout } = useAuth();
   const navigate = useNavigate();
@@ -21,9 +23,19 @@ export default function Dashboard() {
       if (!userID) return;
       
       try {
-        const balanceData = await walletService.getWalletBalance(userID);
+        // Параллельно загружаем баланс и данные пользователя
+        const [balanceData, userData] = await Promise.all([
+          walletService.getWalletBalance(userID),
+          apiClient.get(`/users/${userID}`) // Запрос данных пользователя
+        ]);
+        
         setBalance(balanceData.balance);
         setFrozenBalance(balanceData.frozen);
+        
+        // Устанавливаем логин как название команды
+        if (userData.data && userData.data.login) {
+          setTeamName(userData.data.login);
+        }
       } catch (error: any) {
         if (error.response?.status === 401) {
           logout();
@@ -61,7 +73,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <Badge variant="secondary" className="text-sm">
-          Команда Alpha
+          Команда {teamName}
         </Badge>
       </div>
 
@@ -81,7 +93,7 @@ export default function Dashboard() {
               <p className="text-xl font-bold text-muted-foreground">{frozenBalance.toFixed(2)} USDT</p>
             </div>
           </div>
-          <div className="flex items-center justify-between pt-2 border-t border-border">
+          {/* <div className="flex items-center justify-between pt-2 border-t border-border">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Статус трафика</p>
               <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${trafficEnabled ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}`}>
@@ -89,7 +101,7 @@ export default function Dashboard() {
               </div>
             </div>
             <Switch checked={trafficEnabled} onCheckedChange={setTrafficEnabled} />
-          </div>
+          </div> */}
         </CardContent>
       </Card>
     </div>

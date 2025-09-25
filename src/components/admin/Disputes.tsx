@@ -401,9 +401,9 @@ export default function DisputesTab() {
                         <p><span className="font-medium">Сумма диспута (₽):</span> {dispute.dispute_amount_fiat}</p>
                         <p><span className="font-medium">Сумма диспута (крипто):</span> {dispute.dispute_amount_crypto.toFixed(6)}</p>
                         <p>
-                          <a href={dispute.proof_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          {/* <a href={dispute.proof_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                             Доказательство
-                          </a>
+                          </a> */}
                         </p>
                         {dispute.accept_at && (
                           <p><span className="font-medium">До автопринятия:</span> {formatMsToTime(timers[dispute.dispute_id] || 0)}</p>

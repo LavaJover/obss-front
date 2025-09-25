@@ -69,7 +69,7 @@ export function Layout() {
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
             <div className="flex items-center">
-              <h1 className="text-xl font-bold text-primary">CryptoPlatform</h1>
+              <h1 className="text-xl font-bold text-primary">obmenka</h1>
             </div>
 
             {/* Desktop Navigation */}
