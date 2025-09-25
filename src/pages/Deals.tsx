@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,13 +10,14 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
-import { Search, Filter, CalendarIcon, Eye, ChevronLeft, ChevronRight, Copy, CheckCheck } from "lucide-react";
+import { Search, Filter, CalendarIcon, Eye, ChevronLeft, ChevronRight, Copy, CheckCheck, Clock, PauseCircle, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { dealService, Deal } from "@/services/dealService";
-import { convertGoTimeToJSDate, safeFormatDate } from "@/lib/date-utils"; // Добавлен импорт
+import { convertGoTimeToJSDate, safeFormatDate } from "@/lib/date-utils";
+import apiClient from "@/lib/api-client";
 
 // Функции форматирования из старого проекта
 const formatCardNumber = (number: string) => {
@@ -29,17 +30,44 @@ const formatPhoneNumber = (phone: string) => {
   return `+7 (${match[1]}) ${match[2]}-${match[3]}-${match[4]}`;
 };
 
-// Добавьте этот хук для управления таймерами
+// Интерфейс для диспута
+interface Dispute {
+  dispute_id: string;
+  proof_url: string;
+  dispute_reason: string;
+  dispute_status: string;
+  dispute_amount_fiat: number;
+  dispute_amount_crypto: number;
+  dispute_crypto_rate: number;
+  accept_at: string;
+  order_id: string;
+  order: {
+    order_id: string;
+    merchant_order_id: string;
+    amount_fiat: number;
+    crypro_rate: number;
+    amount_crypto: number;
+    bank_detail: {
+      bank_name: string;
+      card_number: string;
+      owner: string;
+      payment_system: string;
+      phone: string;
+      trader_id: string;
+    };
+  };
+}
+
+// Хук для управления таймерами
 const useDealTimers = (deals: Deal[], activeTab: string) => {
   const [timers, setTimers] = useState<{[key: string]: number}>({});
 
   useEffect(() => {
-    if (activeTab !== 'active' || deals.length === 0) {
+    if (activeTab !== 'active' && activeTab !== 'dispute') {
       setTimers({});
       return;
     }
 
-    // Инициализируем таймеры для активных сделок
     const initialTimers: {[key: string]: number} = {};
     deals.forEach(deal => {
       if (deal.expires_at) {
@@ -51,7 +79,6 @@ const useDealTimers = (deals: Deal[], activeTab: string) => {
     });
     setTimers(initialTimers);
 
-    // Запускаем интервал для обновления таймеров
     const interval = setInterval(() => {
       setTimers(prevTimers => {
         const updatedTimers: {[key: string]: number} = {};
@@ -73,7 +100,6 @@ const useDealTimers = (deals: Deal[], activeTab: string) => {
           }
         });
 
-        // Если активных таймеров нет, очищаем интервал
         if (!hasActiveTimers) {
           clearInterval(interval);
         }
@@ -108,8 +134,10 @@ export default function Deals() {
   const [dateFrom, setDateFrom] = useState<Date>();
   const [dateTo, setDateTo] = useState<Date>();
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
   const [approvingDeal, setApprovingDeal] = useState<string | null>(null);
+  const [acceptingDispute, setAcceptingDispute] = useState<string | null>(null);
 
   const [copyStatus, setCopyStatus] = useState<{[key: string]: boolean}>({});
   
@@ -132,51 +160,107 @@ export default function Deals() {
     return () => clearInterval(timer);
   }, []);
 
-  // Загрузка сделок
-  useEffect(() => {
-    const loadDeals = async () => {
-      if (!userID) return;
-      
-      setLoading(true);
-      try {
-        // Преобразуем статусы между старой и новой системой
-        // В useEffect загрузки сделок
-        let status = "";
-        switch (activeTab) {
-          case "active": status = "PENDING"; break;
-          case "completed": status = "COMPLETED"; break;
-          case "cancelled": status = "CANCELED"; break; // Используем CANCELED вместо CANCELLED
-          case "dispute": status = "DISPUTE"; break;
-        }
-        
-        const filters = {
-          page: currentPage,
-          limit: pageSize,
-          status,
-          searchId: searchId || undefined,
-          minAmount: minAmount ? parseFloat(minAmount) : undefined,
-          maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
-          dateFrom,
-          dateTo,
-        };
-        
-        const response = await dealService.getDeals(userID, filters);
-        setDeals(response.orders);
-        setTotalItems(response.pagination.total_items);
-      } catch (error: any) {
-        console.error("Ошибка загрузки сделок:", error);
-        toast({
-          title: "Ошибка загрузки",
-          description: error.response?.data?.message || "Не удалось загрузить список сделок",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Загрузка диспутов
+  const loadDisputes = async () => {
+    if (!userID) return;
+    
+    setLoading(true);
+    try {
+      // Делаем два раздельных запроса для разных статусов
+      const [openedDisputesResponse, freezedDisputesResponse] = await Promise.all([
+        apiClient.get('/admin/orders/disputes', {
+          params: {
+            page: currentPage,
+            limit: pageSize,
+            status: 'DISPUTE_OPENED',
+            traderId: userID,
+            orderId: searchId || undefined,
+          }
+        }),
+        apiClient.get('/admin/orders/disputes', {
+          params: {
+            page: currentPage,
+            limit: pageSize,
+            status: 'DISPUTE_FREEZED',
+            traderId: userID,
+            orderId: searchId || undefined,
+          }
+        })
+      ]);
 
-    loadDeals();
-  }, [userID, activeTab, currentPage, pageSize, searchId, minAmount, maxAmount, dateFrom, dateTo, toast]);
+      // Объединяем результаты
+      const openedDisputes = openedDisputesResponse.data.disputes || [];
+      const freezedDisputes = freezedDisputesResponse.data.disputes || [];
+      const allDisputes = [...openedDisputes, ...freezedDisputes];
+
+      setDisputes(allDisputes);
+      
+      // Для пагинации используем сумму total_items из обоих запросов
+      const openedTotal = openedDisputesResponse.data.pagination?.total_items || 0;
+      const freezedTotal = freezedDisputesResponse.data.pagination?.total_items || 0;
+      setTotalItems(openedTotal + freezedTotal);
+      
+      setDeals([]);
+    } catch (error: any) {
+      console.error("Ошибка загрузки диспутов:", error);
+      toast({
+        title: "Ошибка загрузки диспутов",
+        description: error.response?.data?.message || "Не удалось загрузить диспуты",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Загрузка обычных сделок
+  const loadDeals = async () => {
+    if (!userID) return;
+    
+    setLoading(true);
+    try {
+      let status = "";
+      switch (activeTab) {
+        case "active": status = "PENDING"; break;
+        case "completed": status = "COMPLETED"; break;
+        case "cancelled": status = "CANCELED"; break;
+      }
+      
+      const filters = {
+        page: currentPage,
+        limit: pageSize,
+        status,
+        searchId: searchId || undefined,
+        minAmount: minAmount ? parseFloat(minAmount) : undefined,
+        maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+        dateFrom,
+        dateTo,
+      };
+      
+      const response = await dealService.getDeals(userID, filters);
+      setDeals(response.orders);
+      setDisputes([]);
+      setTotalItems(response.pagination.total_items);
+    } catch (error: any) {
+      console.error("Ошибка загрузки сделок:", error);
+      toast({
+        title: "Ошибка загрузки",
+        description: error.response?.data?.message || "Не удалось загрузить список сделок",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Загрузка данных при изменении параметров
+  useEffect(() => {
+    if (activeTab === "dispute") {
+      loadDisputes();
+    } else {
+      loadDeals();
+    }
+  }, [userID, activeTab, currentPage, pageSize, searchId, minAmount, maxAmount, dateFrom, dateTo]);
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
@@ -184,7 +268,10 @@ export default function Deals() {
       COMPLETED: { label: "Завершена", variant: "secondary" as const },
       CANCELLED: { label: "Отменена", variant: "destructive" as const },
       CANCELED: { label: "Отменена", variant: "destructive" as const },
-      DISPUTE: { label: "Спор", variant: "outline" as const }
+      DISPUTE: { label: "Спор", variant: "outline" as const },
+      DISPUTE_OPENED: { label: "Открыт", variant: "default" as const },
+      DISPUTE_FREEZED: { label: "На паузе", variant: "secondary" as const },
+      DISPUTE_ACCEPTED: { label: "Принят", variant: "outline" as const }
     };
     
     return statusConfig[status as keyof typeof statusConfig] || { label: status, variant: "outline" as const };
@@ -192,8 +279,38 @@ export default function Deals() {
 
   const dealTimers = useDealTimers(deals, activeTab);
 
-  // Обновленная функция getTimeDisplay
-  const getTimeDisplay = (deal: Deal, status: string) => {
+  // Функция для отображения времени для диспутов
+  const getDisputeTimeDisplay = (dispute: Dispute) => {
+    if (!dispute.accept_at) return "—";
+    
+    try {
+      const acceptAt = new Date(dispute.accept_at).getTime();
+      const now = currentTime.getTime();
+      const remainingMs = acceptAt - now;
+      
+      if (remainingMs <= 0) {
+        return <span className="text-red-500 font-semibold">00:00:00</span>;
+      }
+      
+      const timeString = formatCountdown(remainingMs);
+      
+      return (
+        <span className={`font-mono ${
+          remainingMs < 300000 ? 'text-red-500 animate-pulse' : 
+          remainingMs < 900000 ? 'text-orange-500' : 
+          'text-green-500'
+        }`}>
+          {timeString}
+        </span>
+      );
+    } catch (error) {
+      console.error('Error calculating dispute countdown:', error);
+      return "—";
+    }
+  };
+
+  // Функция для отображения времени для обычных сделок
+  const getDealTimeDisplay = (deal: Deal, status: string) => {
     if (status === "active" && deal.expires_at) {
       try {
         const expiresAt = new Date(deal.expires_at).getTime();
@@ -204,12 +321,7 @@ export default function Deals() {
           return <span className="text-red-500 font-semibold">00:00:00</span>;
         }
         
-        const totalSeconds = Math.floor(remainingMs / 1000);
-        const hours = Math.floor(totalSeconds / 3600);
-        const minutes = Math.floor((totalSeconds % 3600) / 60);
-        const seconds = totalSeconds % 60;
-        
-        const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        const timeString = formatCountdown(remainingMs);
         
         return (
           <span className={`font-mono ${
@@ -225,19 +337,17 @@ export default function Deals() {
         return "—";
       }
     } else {
-      // Для завершенных сделок используем updated_at
-      const completedDate = deal.status === "COMPLETED" || deal.status === "CANCELED"? deal.updated_at : null;
+      const completedDate = deal.status === "COMPLETED" || deal.status === "CANCELED" ? deal.updated_at : null;
       return completedDate ? safeFormatDate(completedDate, "dd.MM.yyyy HH:mm:ss") : "—";
     }
   };
 
-  // Обновленная функция getTimeColumnHeader
   const getTimeColumnHeader = (status: string) => {
     switch (status) {
       case "active": return "Осталось времени";
       case "completed": return "Завершено в";
       case "cancelled": return "Отменено в";
-      case "dispute": return "Отменено в";
+      case "dispute": return "Таймер";
       default: return "Время";
     }
   };
@@ -272,6 +382,29 @@ export default function Deals() {
     }
   };
 
+  const handleAcceptDispute = async (disputeId: string) => {
+    setAcceptingDispute(disputeId);
+    try {
+      await apiClient.post('/admin/disputes/accept', { dispute_id: disputeId });
+      toast({
+        title: "Диспут принят",
+        description: "Диспут успешно принят",
+      });
+      
+      // Обновляем список диспутов
+      await loadDisputes();
+    } catch (error: any) {
+      console.error("Ошибка принятия диспута:", error);
+      toast({
+        title: "Ошибка принятия",
+        description: error.response?.data?.message || "Не удалось принять диспут",
+        variant: "destructive",
+      });
+    } finally {
+      setAcceptingDispute(null);
+    }
+  };
+
   // Pagination logic
   const totalPages = Math.ceil(totalItems / pageSize);
 
@@ -298,7 +431,6 @@ export default function Deals() {
         );
       }
     } else {
-      // Always show first page
       items.push(
         <PaginationItem key={1}>
           <PaginationLink 
@@ -311,12 +443,10 @@ export default function Deals() {
         </PaginationItem>
       );
 
-      // Show ellipsis if needed
       if (currentPage > 3) {
         items.push(<PaginationEllipsis key="start-ellipsis" />);
       }
 
-      // Show pages around current page
       const start = Math.max(2, currentPage - 1);
       const end = Math.min(totalPages - 1, currentPage + 1);
       
@@ -334,12 +464,10 @@ export default function Deals() {
         );
       }
 
-      // Show ellipsis if needed
       if (currentPage < totalPages - 2) {
         items.push(<PaginationEllipsis key="end-ellipsis" />);
       }
 
-      // Always show last page
       items.push(
         <PaginationItem key={totalPages}>
           <PaginationLink 
@@ -391,12 +519,27 @@ export default function Deals() {
     );
   };
 
-    // Функция для преобразования данных из старого формата в новый
-      // Функция для преобразования данных из старого формата в новый
-    // Функция для преобразования данных из API в формат для отображения
-  // Функция для преобразования данных из API в формат для отображения
+  const DisputeIdCell = ({ disputeId }: { disputeId: string }) => {
+    const shortId = disputeId.length > 8 ? `${disputeId.substring(0, 4)}...${disputeId.slice(-4)}` : disputeId;
+    
+    return (
+      <div 
+        className="flex items-center gap-1 text-xs font-mono cursor-pointer hover:text-foreground transition-colors"
+        onClick={() => copyToClipboard(disputeId, `dispute-${disputeId}`)}
+        title="Нажмите, чтобы скопировать ID диспута"
+      >
+        {shortId}
+        {copyStatus[`dispute-${disputeId}`] ? (
+          <CheckCheck className="h-3 w-3 text-green-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </div>
+    );
+  };
+
+  // Функция для преобразования данных сделки
   const transformDealData = (deal: Deal) => {
-    // Если данные уже в новом формате (с device и paymentMethod), возвращаем как есть
     if (deal.device && deal.paymentMethod) {
       return {
         ...deal,
@@ -406,7 +549,6 @@ export default function Deals() {
       };
     }
 
-    // Преобразуем из формата API в формат для UI
     const createdAt = deal.created_at 
       ? convertGoTimeToJSDate(deal.created_at) 
       : null;
@@ -415,17 +557,15 @@ export default function Deals() {
       ? convertGoTimeToJSDate(deal.updated_at) 
       : null;
 
-    // Определяем метод оплаты на основе payment_system
     const getPaymentMethod = (system: string) => {
       const methods: { [key: string]: string } = {
         'SBP': 'СБП',
-        'CARD': 'Карта',
+        'C2C': 'Карта',
         'BANK': 'Банковский перевод'
       };
       return methods[system] || system;
     };
 
-    // Форматируем реквизиты в зависимости от того, телефон это или карта
     const formatPaymentDetails = (bankDetail: any) => {
       if (bankDetail?.phone) {
         return formatPhoneNumber(bankDetail.phone);
@@ -436,7 +576,6 @@ export default function Deals() {
       return "—";
     };
 
-    // Создаем объект с правильными типами
     const transformed: Deal = {
       ...deal,
       id: deal.order_id,
@@ -449,24 +588,60 @@ export default function Deals() {
       amountUSDT: `${deal.amount_crypto.toFixed(2)} USDT`,
       exchangeRate: deal.crypto_rub_rate,
       traderReward: `${(deal.amount_crypto * deal.trader_reward).toFixed(2)} USDT`,
-      createdAt: createdAt, // Теперь это Date, что допустимо благодаря обновленному интерфейсу
-      completedAt: completedAt, // Теперь это Date или null
+      createdAt: createdAt,
+      completedAt: completedAt,
       status: deal.status,
     };
 
     return transformed;
   };
 
-  // Добавьте эту функцию в date-utils.tsx или прямо в компонент
+  // Функция для отображения суммы диспута
+  const renderDisputeAmount = (dispute: Dispute) => {
+    const isAmountDifferent = dispute.dispute_amount_fiat !== dispute.order.amount_fiat;
+    
+    return (
+      <div className="space-y-1">
+        {isAmountDifferent ? (
+          <>
+            <div className="text-sm font-semibold whitespace-nowrap">
+              <s className="text-muted-foreground mr-2">
+                {dispute.order.amount_fiat.toLocaleString("ru-RU")} ₽
+              </s>
+              <span className="text-red-600">
+                {dispute.dispute_amount_fiat.toLocaleString("ru-RU")} ₽
+              </span>
+            </div>
+            {/* <div className="text-xs text-muted-foreground">
+              Сумма сделки отличается от суммы диспута
+            </div> */}
+          </>
+        ) : (
+          <div className="text-sm font-semibold whitespace-nowrap">
+            {dispute.dispute_amount_fiat.toLocaleString("ru-RU")} ₽
+          </div>
+        )}
+        <div className="text-sm text-success font-semibold whitespace-nowrap">
+          {dispute.dispute_amount_crypto.toFixed(2)} USDT
+        </div>
+        <div className="text-xs text-muted-foreground whitespace-nowrap">
+          {dispute.dispute_crypto_rate.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽/USDT
+        </div>
+        {/* {isAmountDifferent && (
+          <div className="text-xs text-muted-foreground whitespace-nowrap">
+            Курс сделки: {dispute.order.crypro_rate.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽/USDT
+          </div>
+        )} */}
+      </div>
+    );
+  };
+
   const formatDateTimeWithTimezone = (dateString: string): string => {
     if (!dateString) return "—";
     try {
       const date = new Date(dateString);
-      // Проверяем валидность даты
       if (isNaN(date.getTime())) return "—";
-      // Автоматически определяем часовой пояс пользователя
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      // Форматируем дату с учетом часового пояса
       return new Intl.DateTimeFormat('ru-RU', {
         year: 'numeric',
         month: '2-digit',
@@ -481,6 +656,13 @@ export default function Deals() {
       return "—";
     }
   };
+
+  // Группируем диспуты по статусу для отображения
+  const groupedDisputes = useMemo(() => {
+    const opened = disputes.filter(d => d.dispute_status === 'DISPUTE_OPENED');
+    const freezed = disputes.filter(d => d.dispute_status === 'DISPUTE_FREEZED');
+    return { opened, freezed };
+  }, [disputes]);
 
   return (
     <div className="space-y-6">
@@ -614,7 +796,7 @@ export default function Deals() {
               {loading ? (
                 <div className="text-center py-12">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-                  <p className="mt-4 text-muted-foreground">Загрузка сделок...</p>
+                  <p className="mt-4 text-muted-foreground">Загрузка данных...</p>
                 </div>
               ) : (
                 <>
@@ -626,13 +808,425 @@ export default function Deals() {
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground">Устройство</th>
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground min-w-[320px]">Реквизиты</th>
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground">Сумма сделки</th>
-                          <th className="text-left py-3 px-4 font-medium text-muted-foreground">Время открытия</th>
-                          <th className="text-left py-3 px-4 font-medium text-muted-foreground">{getTimeColumnHeader(activeTab)}</th>
+                          {activeTab === "dispute" ? (
+                            <th className="text-left py-3 px-4 font-medium text-muted-foreground">Таймер</th>
+                          ) : (
+                            <th className="text-left py-3 px-4 font-medium text-muted-foreground">
+                              {activeTab === "active" ? "Осталось времени" : 
+                               activeTab === "completed" ? "Завершено в" : "Отменено в"}
+                            </th>
+                          )}
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground">Действия</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {deals.map((deal) => {
+                        {/* Рендеринг диспутов */}
+                        {activeTab === "dispute" && (
+                          <>
+                            {/* Открытые диспуты */}
+                            {groupedDisputes.opened.map((dispute) => {
+                              const bankDetail = dispute.order.bank_detail;
+                              const getPaymentMethod = (system: string) => {
+                                const methods: { [key: string]: string } = {
+                                  'SBP': 'СБП',
+                                  'C2C': 'Карта',
+                                  'BANK': 'Банковский перевод'
+                                };
+                                return methods[system] || system;
+                              };
+
+                              const formatPaymentDetails = (bankDetail: any) => {
+                                if (bankDetail?.phone) {
+                                  return formatPhoneNumber(bankDetail.phone);
+                                }
+                                if (bankDetail?.card_number) {
+                                  return formatCardNumber(bankDetail.card_number);
+                                }
+                                return "—";
+                              };
+
+                              return (
+                                <tr key={dispute.dispute_id} className="border-b border-border last:border-0 hover:bg-muted/50">
+                                  <td className="py-3 px-4 font-mono text-sm whitespace-nowrap">
+                                    <OrderIdCell orderId={dispute.order.order_id} />
+                                  </td>
+                                  <td className="py-3 px-4 text-sm font-medium whitespace-nowrap">—</td>
+                                  <td className="py-3 px-4 min-w-[320px]">
+                                    <div className="space-y-1">
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">Метод:</span>
+                                        <span className="text-sm font-medium">{getPaymentMethod(bankDetail.payment_system)}</span>
+                                      </div>
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">Банк:</span>
+                                        <span className="text-sm">{bankDetail.bank_name}</span>
+                                      </div>
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">Реквизит:</span>
+                                        <span className="text-sm font-mono">{formatPaymentDetails(bankDetail)}</span>
+                                      </div>
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">ФИО:</span>
+                                        <span className="text-sm">{bankDetail.owner}</span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 font-semibold">
+                                    {renderDisputeAmount(dispute)}
+                                  </td>
+                                  <td className="py-3 px-4 text-sm text-muted-foreground whitespace-nowrap">
+                                    {getDisputeTimeDisplay(dispute)}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="flex gap-2 items-center">
+                                      {/* Кнопка принять для открытых диспутов */}
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button size="sm" variant="outline" disabled={acceptingDispute === dispute.dispute_id}>
+                                            {acceptingDispute === dispute.dispute_id ? (
+                                              <>
+                                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                                Принятие...
+                                              </>
+                                            ) : (
+                                              "Принять"
+                                            )}
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Принятие диспута</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              Вы действительно хотите принять диспут {dispute.dispute_id}? 
+                                              Это действие нельзя будет отменить.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleAcceptDispute(dispute.dispute_id)}>
+                                              Принять
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+
+                                      {/* Кнопка подробнее */}
+                                      <Dialog>
+                                        <DialogTrigger asChild>
+                                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                            <Eye className="h-4 w-4" />
+                                          </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="max-w-2xl">
+                                          <DialogHeader>
+                                            <DialogTitle>Подробности диспута</DialogTitle>
+                                          </DialogHeader>
+                                          <div className="space-y-6">
+                                            <div className="grid grid-cols-2 gap-4">
+                                              <div className="space-y-3">
+                                                <h4 className="font-semibold">Информация о сделке</h4>
+                                                <div className="space-y-2 text-sm">
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">ID сделки:</span>
+                                                    <span className="font-mono"><OrderIdCell orderId={dispute.order.order_id} /></span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Статус:</span>
+                                                    <Badge variant={getStatusBadge("DISPUTE").variant}>
+                                                      {getStatusBadge("DISPUTE").label}
+                                                    </Badge>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              
+                                              <div className="space-y-3">
+                                                <h4 className="font-semibold">Финансовая информация</h4>
+                                                <div className="space-y-2 text-sm">
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Сумма сделки:</span>
+                                                    <span className="font-semibold">{dispute.order.amount_fiat.toLocaleString("ru-RU")} ₽</span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Сумма диспута:</span>
+                                                    <span className="font-semibold">{dispute.dispute_amount_fiat.toLocaleString("ru-RU")} ₽</span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Сумма в USDT:</span>
+                                                    <span className="font-semibold text-success">{dispute.dispute_amount_crypto.toFixed(2)} USDT</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            
+                                            <div className="space-y-3">
+                                              <h4 className="font-semibold">Информация о диспуте</h4>
+                                              <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">ID диспута:</span>
+                                                  <span className="font-mono"><DisputeIdCell disputeId={dispute.dispute_id} /></span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Статус диспута:</span>
+                                                  <Badge variant={getStatusBadge(dispute.dispute_status).variant}>
+                                                    {getStatusBadge(dispute.dispute_status).label}
+                                                  </Badge>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Причина:</span>
+                                                  <span>{dispute.dispute_reason}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Дедлайн:</span>
+                                                  <span>{formatDateTimeWithTimezone(dispute.accept_at)}</span>
+                                                </div>
+                                                {dispute.proof_url && (
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Доказательства:</span>
+                                                    <a href={dispute.proof_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                                      Посмотреть
+                                                    </a>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                              <h4 className="font-semibold">Платежные реквизиты</h4>
+                                              <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Метод платежа:</span>
+                                                  <span className="font-medium">{getPaymentMethod(bankDetail.payment_system)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Банк:</span>
+                                                  <span>{bankDetail.bank_name}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Реквизиты:</span>
+                                                  <span className="font-mono">{formatPaymentDetails(bankDetail)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Владелец:</span>
+                                                  <span>{bankDetail.owner}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </DialogContent>
+                                      </Dialog>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* Замороженные диспуты */}
+                            {groupedDisputes.freezed.map((dispute) => {
+                              const bankDetail = dispute.order.bank_detail;
+                              const getPaymentMethod = (system: string) => {
+                                const methods: { [key: string]: string } = {
+                                  'SBP': 'СБП',
+                                  'C2C': 'Карта',
+                                  'BANK': 'Банковский перевод'
+                                };
+                                return methods[system] || system;
+                              };
+
+                              const formatPaymentDetails = (bankDetail: any) => {
+                                if (bankDetail?.phone) {
+                                  return formatPhoneNumber(bankDetail.phone);
+                                }
+                                if (bankDetail?.card_number) {
+                                  return formatCardNumber(bankDetail.card_number);
+                                }
+                                return "—";
+                              };
+
+                              return (
+                                <tr key={dispute.dispute_id} className="border-b border-border last:border-0 hover:bg-muted/50 bg-muted/30">
+                                  <td className="py-3 px-4 font-mono text-sm whitespace-nowrap">
+                                    <OrderIdCell orderId={dispute.order.order_id} />
+                                  </td>
+                                  <td className="py-3 px-4 text-sm font-medium whitespace-nowrap">—</td>
+                                  <td className="py-3 px-4 min-w-[320px]">
+                                    <div className="space-y-1">
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">Метод:</span>
+                                        <span className="text-sm font-medium">{getPaymentMethod(bankDetail.payment_system)}</span>
+                                      </div>
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">Банк:</span>
+                                        <span className="text-sm">{bankDetail.bank_name}</span>
+                                      </div>
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">Реквизит:</span>
+                                        <span className="text-sm font-mono">{formatPaymentDetails(bankDetail)}</span>
+                                      </div>
+                                      <div className="flex gap-3">
+                                        <span className="text-xs text-muted-foreground min-w-[60px]">ФИО:</span>
+                                        <span className="text-sm">{bankDetail.owner}</span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 font-semibold">
+                                    {renderDisputeAmount(dispute)}
+                                  </td>
+                                  <td className="py-3 px-4 text-sm text-muted-foreground whitespace-nowrap">
+                                    <div className="flex items-center gap-1">
+                                      <PauseCircle className="h-4 w-4 text-orange-500" />
+                                      <span>На паузе</span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="flex gap-2 items-center">
+                                      <Badge variant="secondary" className="flex items-center gap-1">
+                                        <PauseCircle className="h-3 w-3" />
+                                        На паузе
+                                      </Badge>
+
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button size="sm" variant="outline" disabled={acceptingDispute === dispute.dispute_id}>
+                                            {acceptingDispute === dispute.dispute_id ? (
+                                              <>
+                                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                                Принятие...
+                                              </>
+                                            ) : (
+                                              "Принять"
+                                            )}
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Принятие диспута</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              Вы действительно хотите принять диспут {dispute.dispute_id}? 
+                                              Это действие нельзя будет отменить.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleAcceptDispute(dispute.dispute_id)}>
+                                              Принять
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+
+                                      <Dialog>
+                                        <DialogTrigger asChild>
+                                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                                            <Eye className="h-4 w-4" />
+                                          </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="max-w-2xl">
+                                          <DialogHeader>
+                                            <DialogTitle>Подробности диспута (на паузе)</DialogTitle>
+                                          </DialogHeader>
+                                          <div className="space-y-6">
+                                            <div className="grid grid-cols-2 gap-4">
+                                              <div className="space-y-3">
+                                                <h4 className="font-semibold">Информация о сделке</h4>
+                                                <div className="space-y-2 text-sm">
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">ID сделки:</span>
+                                                    <span className="font-mono"><OrderIdCell orderId={dispute.order.order_id} /></span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Статус:</span>
+                                                    <Badge variant={getStatusBadge("DISPUTE").variant}>
+                                                      {getStatusBadge("DISPUTE").label}
+                                                    </Badge>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              
+                                              <div className="space-y-3">
+                                                <h4 className="font-semibold">Финансовая информация</h4>
+                                                <div className="space-y-2 text-sm">
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Сумма сделки:</span>
+                                                    <span className="font-semibold">{dispute.order.amount_fiat.toLocaleString("ru-RU")} ₽</span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Сумма диспута:</span>
+                                                    <span className="font-semibold">{dispute.dispute_amount_fiat.toLocaleString("ru-RU")} ₽</span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Сумма в USDT:</span>
+                                                    <span className="font-semibold text-success">{dispute.dispute_amount_crypto.toFixed(2)} USDT</span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            
+                                            <div className="space-y-3">
+                                              <h4 className="font-semibold">Информация о диспуте</h4>
+                                              <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">ID диспута:</span>
+                                                  <span className="font-mono"><DisputeIdCell disputeId={dispute.dispute_id} /></span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Статус диспута:</span>
+                                                  <Badge variant="secondary">
+                                                    На паузе
+                                                  </Badge>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Причина:</span>
+                                                  <span>{dispute.dispute_reason}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Дедлайн:</span>
+                                                  <span>{formatDateTimeWithTimezone(dispute.accept_at)}</span>
+                                                </div>
+                                                {dispute.proof_url && (
+                                                  <div className="flex justify-between">
+                                                    <span className="text-muted-foreground">Доказательства:</span>
+                                                    <a href={dispute.proof_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                                      Посмотреть
+                                                    </a>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                              <h4 className="font-semibold">Платежные реквизиты</h4>
+                                              <div className="bg-muted p-4 rounded-lg space-y-2 text-sm">
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Метод платежа:</span>
+                                                  <span className="font-medium">{getPaymentMethod(bankDetail.payment_system)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Банк:</span>
+                                                  <span>{bankDetail.bank_name}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Реквизиты:</span>
+                                                  <span className="font-mono">{formatPaymentDetails(bankDetail)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                  <span className="text-muted-foreground">Владелец:</span>
+                                                  <span>{bankDetail.owner}</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </DialogContent>
+                                      </Dialog>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </>
+                        )}
+
+                        {/* Рендеринг обычных сделок */}
+                        {activeTab !== "dispute" && deals.map((deal) => {
                           const transformedDeal = transformDealData(deal);
                           return (
                             <tr key={transformedDeal.id} className="border-b border-border last:border-0 hover:bg-muted/50">
@@ -665,18 +1259,13 @@ export default function Deals() {
                                   <div className="text-xs text-muted-foreground whitespace-nowrap">
                                     Курс: {new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(transformedDeal.exchangeRate)} ₽/USDT
                                   </div>
-
                                 </div>
                               </td>
                               <td className="py-3 px-4 text-sm text-muted-foreground whitespace-nowrap">
-                                {formatDateTimeWithTimezone(transformedDeal.created_at)}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-muted-foreground whitespace-nowrap">
-                                {getTimeDisplay(transformedDeal, activeTab)}
+                                {getDealTimeDisplay(transformedDeal, activeTab)}
                               </td>
                               <td className="py-3 px-4">
                                 <div className="flex gap-2 items-center">
-                                  {/* Кнопка подтвердить - не показывать для отмененных и завершенных */}
                                   {activeTab === "active" && (
                                     <AlertDialog>
                                       <AlertDialogTrigger asChild>
@@ -701,7 +1290,6 @@ export default function Deals() {
                                     </AlertDialog>
                                   )}
                                   
-                                  {/* Кнопка подробнее */}
                                   <Dialog>
                                     <DialogTrigger asChild>
                                       <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
@@ -797,7 +1385,7 @@ export default function Deals() {
                   </div>
 
                   {/* Pagination */}
-                  {deals.length > 0 && (
+                  {(deals.length > 0 || disputes.length > 0) && (
                     <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span>Показать</span>
@@ -848,9 +1436,9 @@ export default function Deals() {
                     </div>
                   )}
 
-                  {deals.length === 0 && (
+                  {deals.length === 0 && disputes.length === 0 && (
                     <div className="text-center py-12">
-                      <p className="text-muted-foreground">Сделки не найдены</p>
+                      <p className="text-muted-foreground">Данные не найдены</p>
                     </div>
                   )}
                 </>

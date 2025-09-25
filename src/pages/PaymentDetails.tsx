@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Edit, Trash2, Phone, Building, Monitor, QrCode, Smartphone } from "lucide-react";
+import { Plus, Edit, Trash2, Phone, Building, Monitor, QrCode, Smartphone, CreditCard, CreditCardIcon } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBankDetails } from "@/hooks/useBankDetails";
@@ -1179,7 +1179,7 @@ export default function PaymentDetails() {
             </Select>
           </div>
           
-          <div className="space-y-2">
+          {/* <div className="space-y-2">
             <Label>Тип оплаты</Label>
             <Select 
               value={filters.paymentType} 
@@ -1190,11 +1190,11 @@ export default function PaymentDetails() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все типы</SelectItem>
-                <SelectItem value="digital">Цифровые</SelectItem>
-                <SelectItem value="card">Карточные</SelectItem>
+                <SelectItem value="digital">СБП</SelectItem>
+                <SelectItem value="card">C2C</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </div> */}
           
           <div className="space-y-2">
             <Label>Статус</Label>
@@ -1288,8 +1288,9 @@ export default function PaymentDetails() {
                           </div>
                         )}
                         {detail.card_number && detail.payment_system === "C2C" && (
-                          <div className="text-xs text-muted-foreground">
-                            {formatCardNumber(detail.card_number)}
+                          <div className="flex items-center gap-1 text-sm">
+                            <CreditCardIcon className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs">{formatCardNumber(detail.card_number)}</span>
                           </div>
                         )}
                         <div className="text-xs text-muted-foreground">

@@ -73,7 +73,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <Badge variant="secondary" className="text-sm">
-          Команда {teamName}
+          Аккаунт {teamName}
         </Badge>
       </div>
 
