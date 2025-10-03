@@ -108,7 +108,7 @@ export default function PaymentDetails() {
   const [devicesDialogOpen, setDevicesDialogOpen] = useState(false);
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
-  const [currentQrDevice, setCurrentQrDevice] = useState<string>("");
+  const [currentQrDevice, setCurrentQrDevice] = useState<{deviceId: string, deviceName: string} | null>(null);
   const [deviceFormData, setDeviceFormData] = useState({
     name: "",
     status: "active"
@@ -142,6 +142,25 @@ export default function PaymentDetails() {
 
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [formLoading, setFormLoading] = useState(false);
+
+  // Функция для получения JWT токена
+  const getJwtToken = (): string | null => {
+    return localStorage.getItem('access_token');
+  };
+
+  // Функция для генерации данных QR-кода
+  const generateQrData = (): string => {
+    if (!currentQrDevice || !getJwtToken()) {
+      return '';
+    }
+    
+    const qrPayload = {
+      token: getJwtToken(),
+      group_id: currentQrDevice.deviceId
+    };
+    
+    return JSON.stringify(qrPayload);
+  };
 
   const fetchBanks = async () => {
     setBanksLoading(true);
@@ -295,8 +314,12 @@ export default function PaymentDetails() {
     }
   };
 
+  // Обновляем функцию показа QR-кода
   const handleShowQrCode = (device: any) => {
-    setCurrentQrDevice(device.deviceName);
+    setCurrentQrDevice({
+      deviceId: device.deviceId,
+      deviceName: device.deviceName
+    });
     setQrDialogOpen(true);
   };
 
@@ -762,28 +785,39 @@ export default function PaymentDetails() {
                 <DialogTitle>QR-код для привязки устройства</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
-                 <div className="text-center">
-                   <div className="bg-muted rounded-lg p-8 mb-4">
-                     {/* Заглушка для генерации QR кода */}
-                     <img 
-                       src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`device:${currentQrDevice}:${Date.now()}`)}`}
-                       alt="QR код для привязки устройства"
-                       className="h-32 w-32 mx-auto border rounded"
-                     />
-                     <div className="mt-4 space-y-2">
-                       <p className="text-sm font-medium">QR-код для: {currentQrDevice}</p>
-                       <div className="bg-background border rounded p-2">
-                         <p className="text-xs font-mono break-all">
-                           device:{currentQrDevice}:{Date.now()}
-                         </p>
-                       </div>
-                       <p className="text-xs text-muted-foreground">
-                         Строка для кодирования в QR
-                       </p>
-                     </div>
-                   </div>
+                <div className="text-center">
+                  <div className="bg-muted rounded-lg p-8 mb-4">
+                    {currentQrDevice && getJwtToken() ? (
+                      <>
+                        {/* Генерация QR-кода с данными {token: jwt, group_id: device_id} */}
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateQrData())}`}
+                          alt="QR код для привязки устройства"
+                          className="h-32 w-32 mx-auto border rounded"
+                        />
+                        <div className="mt-4 space-y-2">
+                          <p className="text-sm font-medium">QR-код для: {currentQrDevice.deviceName}</p>
+                          <div className="bg-background border rounded p-2">
+                            <p className="text-xs font-mono break-all">
+                              {generateQrData()}
+                            </p>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Данные для привязки устройства
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="py-8 text-center">
+                        <p className="text-muted-foreground">Не удалось сгенерировать QR-код</p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {!getJwtToken() ? "Токен не найден" : "Устройство не выбрано"}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Отсканируйте этот QR-код с помощью приложения для привязки устройства к аккаунту.
+                    Отсканируйте этот QR-код с помощью мобильного приложения для привязки устройства к аккаунту.
                   </p>
                 </div>
                 <div className="flex justify-end">
