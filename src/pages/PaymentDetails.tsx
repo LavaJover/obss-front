@@ -393,6 +393,10 @@ export default function PaymentDetails() {
       } else if (!/^8\d{10}$/.test(cleanedPhone)) {
         newErrors.phone = "Неверный формат телефона (8XXXXXXXXXX)";
       }
+    }else if (formData.payment_system == "SBP_TRANSGRAN") {
+      if (!formData.phone) {
+        newErrors.phone = "Укажите номер телефона";
+      }
     }
     
     setErrors(newErrors);
@@ -880,6 +884,7 @@ export default function PaymentDetails() {
                     <SelectContent>
                       <SelectItem value="SBP">СБП</SelectItem>
                       <SelectItem value="C2C">Карта (C2C)</SelectItem>
+                      <SelectItem value="SBP_TRANSGRAN">СБП Трансгран</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.payment_system && <span className="text-red-500 text-xs">{errors.payment_system}</span>}
@@ -974,6 +979,38 @@ export default function PaymentDetails() {
                       }
                       
                       handleInputChange("phone", formattedValue);
+                    }}
+                    className={errors.phone ? "border-red-500" : ""}
+                    maxLength={18}
+                  />
+                  {errors.phone && <span className="text-red-500 text-xs">{errors.phone}</span>}
+                </div>
+              ) : formData.payment_system === "SBP_TRANSGRAN" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Телефон*</Label>
+                  <Input 
+                    placeholder="+992 99 123-45-67" 
+                    value={formData.phone} 
+                    onChange={e => {
+                      // Разрешаем ввод только цифр и знака +
+                      let value = e.target.value.replace(/[^\d+]/g, '');
+                      
+                      // Ограничиваем длину
+                      if (value.length > 12) {
+                        value = value.substring(0, 12);
+                      }
+                      
+                      // Форматируем номер для отображения
+                      // let formattedValue = value;
+                      // if (value.startsWith('+7') && value.length > 2) {
+                      //   const numbers = value.substring(2).replace(/\D/g, '');
+                      //   formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
+                      // } else if (value.startsWith('8') && value.length > 1) {
+                      //   const numbers = value.substring(1).replace(/\D/g, '');
+                      //   formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
+                      // }
+                      
+                      handleInputChange("phone", value);
                     }}
                     className={errors.phone ? "border-red-500" : ""}
                     maxLength={18}
