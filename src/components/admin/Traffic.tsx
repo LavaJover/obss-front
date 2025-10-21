@@ -218,7 +218,7 @@ export default function TrafficTab() {
         apiClient.get("/admin/users?role=MERCHANT"),
         apiClient.get("/admin/users?role=TRADER"),
         apiClient.get("/admin/users?role=TEAM_LEAD"),
-        apiClient.get("/admin/traffic/records?page=1&limit=1000")
+        apiClient.get("/admin/traffic/records?page=1&limit=100")
       ]);
       
       const allTraders = [
