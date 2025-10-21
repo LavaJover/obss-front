@@ -211,15 +211,70 @@ export default function TrafficTab() {
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
   const [traderSearchOpen, setTraderSearchOpen] = useState<{[key: string]: boolean}>({});
 
+  // Добавляем интерцепторы для отладки
+  useEffect(() => {
+    // Интерцептор запросов
+    const requestInterceptor = apiClient.interceptors.request.use(
+      (config) => {
+        console.log('🔄 API Request:', {
+          method: config.method?.toUpperCase(),
+          url: config.url,
+          data: config.data,
+          params: config.params
+        });
+        return config;
+      },
+      (error) => {
+        console.error('❌ API Request Error:', error);
+        return Promise.reject(error);
+      }
+    );
+
+    // Интерцептор ответов
+    const responseInterceptor = apiClient.interceptors.response.use(
+      (response) => {
+        console.log('✅ API Response:', {
+          status: response.status,
+          url: response.config.url,
+          data: response.data
+        });
+        return response;
+      },
+      (error) => {
+        console.error('❌ API Response Error:', {
+          url: error.config?.url,
+          status: error.response?.status,
+          data: error.response?.data,
+          message: error.message
+        });
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      apiClient.interceptors.request.eject(requestInterceptor);
+      apiClient.interceptors.response.eject(responseInterceptor);
+    };
+  }, []);
+
   const fetchData = async () => {
     setLoading(true);
     try {
+      console.log('🔄 Starting data fetch...');
+      
       const [merchantRes, traderRes, teamLeadRes, trafficRes] = await Promise.all([
         apiClient.get("/admin/users?role=MERCHANT"),
         apiClient.get("/admin/users?role=TRADER"),
         apiClient.get("/admin/users?role=TEAM_LEAD"),
         apiClient.get("/admin/traffic/records?page=1&limit=100")
       ]);
+      
+      console.log('📊 Fetch results:', {
+        merchants: merchantRes.data.users?.length || 0,
+        traders: traderRes.data.users?.length || 0,
+        teamLeads: teamLeadRes.data.users?.length || 0,
+        trafficRecords: trafficRes.data.traffic_records?.length || 0
+      });
       
       const allTraders = [
         ...(traderRes.data.users || []),
@@ -229,8 +284,15 @@ export default function TrafficTab() {
       setMerchants(merchantRes.data.users || []);
       setTraders(allTraders);
       setTrafficRecords(trafficRes.data.traffic_records || []);
+      
+      console.log('✅ Data fetch completed successfully');
     } catch (err: any) {
-      console.error("Ошибка при загрузке данных:", err);
+      console.error("❌ Ошибка при загрузке данных:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка загрузки",
         description: "Не удалось загрузить данные трафика",
@@ -338,15 +400,17 @@ export default function TrafficTab() {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge 
-            variant={unlocked ? "default" : "secondary"} 
-            className={cn(
-              "cursor-help",
-              unlocked ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-            )}
-          >
-            {unlocked ? <Unlock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-          </Badge>
+          <span>
+            <Badge 
+              variant={unlocked ? "default" : "secondary"} 
+              className={cn(
+                "cursor-help",
+                unlocked ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+              )}
+            >
+              {unlocked ? <Unlock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
+            </Badge>
+          </span>
         </TooltipTrigger>
         <TooltipContent>
           <p>{tooltip}</p>
@@ -357,21 +421,43 @@ export default function TrafficTab() {
 
   // Merchant actions - обновлено для merchant_unlocked
   const handleMerchantToggle = async (merchantTraffic: MerchantTraffic) => {
+    const newUnlockedStatus = !merchantTraffic.merchant_unlocked;
+    console.log('🔄 Toggling merchant lock:', {
+      merchantId: merchantTraffic.merchant.id,
+      merchantName: merchantTraffic.merchant.username,
+      currentUnlocked: merchantTraffic.merchant_unlocked,
+      newUnlocked: newUnlockedStatus
+    });
+
     setActionLoading(`merchant-toggle-${merchantTraffic.merchant.id}`);
     try {
-      await apiClient.patch(`/traffic/merchants/${merchantTraffic.merchant.id}?unlocked=${!merchantTraffic.merchant_unlocked}`);
+      const url = `/traffic/merchants/${merchantTraffic.merchant.id}?unlocked=${newUnlockedStatus}`;
+      console.log('📤 Sending merchant toggle request to:', url);
+      
+      const response = await apiClient.patch(url);
+      
+      console.log('✅ Merchant toggle response:', response.data);
       
       toast({
         title: "Статус обновлён",
-        description: `Блокировка мерчанта ${merchantTraffic.merchant.username} ${!merchantTraffic.merchant_unlocked ? 'снята' : 'установлена'}`,
+        description: `Блокировка мерчанта ${merchantTraffic.merchant.username} ${newUnlockedStatus ? 'снята' : 'установлена'}`,
       });
       
-      fetchData();
+      // Даем время серверу обработать запрос перед обновлением данных
+      setTimeout(() => {
+        fetchData();
+      }, 300);
     } catch (err: any) {
-      console.error("Ошибка при обновлении блокировки мерчанта:", err);
+      console.error("❌ Ошибка при обновлении блокировки мерчанта:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        url: err.config?.url
+      });
       toast({
         title: "Ошибка обновления",
-        description: err.response?.data?.message || "Не удалось обновить блокировку мерчанта",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось обновить блокировку мерчанта",
         variant: "destructive"
       });
     } finally {
@@ -380,6 +466,7 @@ export default function TrafficTab() {
   };
 
   const openMerchantSettings = (merchantTraffic: MerchantTraffic) => {
+    console.log('📝 Opening merchant settings:', merchantTraffic.merchant.username);
     setMerchantSettingsForm({
       merchant_id: merchantTraffic.merchant.id,
       platform_fee: formatDecimal(merchantTraffic.platform_fee),
@@ -390,39 +477,57 @@ export default function TrafficTab() {
   };
 
   const handleMerchantSettingsSave = async () => {
-    const platformFee = parseFloat(merchantSettingsForm.platform_fee);
-    if (isNaN(platformFee) || platformFee < 0) {
+    const platformFeeValue = parseFloat(merchantSettingsForm.platform_fee);
+    if (isNaN(platformFeeValue) || platformFeeValue < 0) {
       setFormErrors({ platform_fee: "Введите корректную комиссию" });
       return;
     }
 
+    console.log('💾 Saving merchant settings:', {
+      merchant_id: merchantSettingsForm.merchant_id,
+      platform_fee: platformFeeValue / 100,
+      enabled: merchantSettingsForm.enabled
+    });
+
     setActionLoading(`merchant-save-${merchantSettingsForm.merchant_id}`);
     try {
       // Обновляем все записи трафика для этого мерчанта
-      const updatePromises = trafficRecords
-        .filter(record => record.merchant_id === merchantSettingsForm.merchant_id)
-        .map(record => 
-          apiClient.patch("/admin/traffic/edit", {
-            id: record.id,
-            platform_fee: platformFee / 100,
-            enabled: merchantSettingsForm.enabled
-          })
-        );
+      const merchantRecords = trafficRecords.filter(record => record.merchant_id === merchantSettingsForm.merchant_id);
+      console.log(`📊 Found ${merchantRecords.length} records to update`);
 
-      await Promise.all(updatePromises);
-      
+      const updatePromises = merchantRecords.map(record => {
+        const updateData = {
+          id: record.id,
+          platform_fee: platformFeeValue / 100,
+          enabled: merchantSettingsForm.enabled
+        };
+        console.log('📤 Updating record:', updateData);
+        return apiClient.patch("/admin/traffic/edit", updateData);
+      });
+
+      const results = await Promise.all(updatePromises);
+      console.log('✅ Merchant settings save results:', results);
+
       toast({
         title: "Настройки сохранены",
         description: "Настройки мерчанта успешно обновлены",
       });
-      
+
       setMerchantSettingsModal({ open: false, merchant: null });
-      fetchData();
+      
+      setTimeout(() => {
+        fetchData();
+      }, 500);
     } catch (err: any) {
-      console.error("Ошибка при сохранении настроек мерчанта:", err);
+      console.error("❌ Ошибка при сохранении настроек мерчанта:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка сохранения",
-        description: err.response?.data?.message || "Не удалось сохранить настройки",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось сохранить настройки",
         variant: "destructive"
       });
     } finally {
@@ -433,26 +538,40 @@ export default function TrafficTab() {
   const handleDeleteMerchant = async () => {
     if (!deleteMerchantDialog.merchant) return;
 
+    console.log('🗑️ Deleting merchant:', deleteMerchantDialog.merchant.merchant.username);
+
     setActionLoading(`merchant-delete-${deleteMerchantDialog.merchant.merchant.id}`);
     try {
       const deletePromises = trafficRecords
         .filter(record => record.merchant_id === deleteMerchantDialog.merchant!.merchant.id)
-        .map(record => apiClient.delete(`/admin/traffic/${record.id}`));
+        .map(record => {
+          console.log('🗑️ Deleting traffic record:', record.id);
+          return apiClient.delete(`/admin/traffic/${record.id}`);
+        });
 
-      await Promise.all(deletePromises);
-      
+      const results = await Promise.all(deletePromises);
+      console.log('✅ Merchant delete results:', results);
+
       toast({
         title: "Мерчант удалён",
         description: `Все записи трафика для ${deleteMerchantDialog.merchant.merchant.username} удалены`,
       });
-      
+
       setDeleteMerchantDialog({ open: false, merchant: null });
-      fetchData();
+      
+      setTimeout(() => {
+        fetchData();
+      }, 500);
     } catch (err: any) {
-      console.error("Ошибка при удалении мерчанта:", err);
+      console.error("❌ Ошибка при удалении мерчанта:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка удаления",
-        description: err.response?.data?.message || "Не удалось удалить записи трафика",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось удалить записи трафика",
         variant: "destructive"
       });
     } finally {
@@ -462,26 +581,45 @@ export default function TrafficTab() {
 
   // Trader actions - обновлено для manually_unlocked
   const handleTraderToggle = async (traderTraffic: TraderTraffic) => {
+    const newUnlockedStatus = !traderTraffic.manually_unlocked;
+    console.log('🔄 Toggling trader manual lock:', {
+      traderId: traderTraffic.trader.id,
+      traderName: traderTraffic.trader.username,
+      currentUnlocked: traderTraffic.manually_unlocked,
+      newUnlocked: newUnlockedStatus,
+      connectionsCount: traderTraffic.connections.length
+    });
+
     setActionLoading(`trader-toggle-${traderTraffic.trader.id}`);
     try {
       // Для каждого подключения трейдера устанавливаем manually_unlocked
-      const updatePromises = traderTraffic.connections.map(connection =>
-        apiClient.patch(`/traffic/${connection.id}/manual?unlocked=${!traderTraffic.manually_unlocked}`)
-      );
+      const updatePromises = traderTraffic.connections.map(connection => {
+        const url = `/traffic/${connection.id}/manual?unlocked=${newUnlockedStatus}`;
+        console.log('📤 Sending manual lock update:', { connectionId: connection.id, url });
+        return apiClient.patch(url);
+      });
 
-      await Promise.all(updatePromises);
-      
+      const results = await Promise.all(updatePromises);
+      console.log('✅ Trader toggle results:', results);
+
       toast({
         title: "Статус обновлён",
-        description: `Ручная блокировка для трейдера ${traderTraffic.trader.username} ${!traderTraffic.manually_unlocked ? 'снята' : 'установлена'}`,
+        description: `Ручная блокировка для трейдера ${traderTraffic.trader.username} ${newUnlockedStatus ? 'снята' : 'установлена'}`,
       });
-      
-      fetchData();
+
+      setTimeout(() => {
+        fetchData();
+      }, 500);
     } catch (err: any) {
-      console.error("Ошибка при обновлении ручной блокировки трейдера:", err);
+      console.error("❌ Ошибка при обновлении ручной блокировки трейдера:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка обновления",
-        description: err.response?.data?.message || "Не удалось обновить блокировку",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось обновить блокировку",
         variant: "destructive"
       });
     } finally {
@@ -490,6 +628,7 @@ export default function TrafficTab() {
   };
 
   const openTraderSettings = (traderTraffic: TraderTraffic) => {
+    console.log('📝 Opening trader settings:', traderTraffic.trader.username);
     const connectionsForm: TraderConnectionForm[] = traderTraffic.connections.map(connection => ({
       merchant_id: connection.merchant_id,
       trader_reward: formatDecimal(connection.trader_reward),
@@ -525,6 +664,11 @@ export default function TrafficTab() {
   };
 
   const handleTraderSettingsSave = async () => {
+    console.log('💾 Saving trader settings:', {
+      trader_id: traderSettingsForm.trader_id,
+      connectionsCount: traderSettingsForm.connections.length
+    });
+
     const errors: {[key: string]: string} = {};
 
     traderSettingsForm.connections.forEach((connection, index) => {
@@ -550,6 +694,7 @@ export default function TrafficTab() {
     });
 
     if (Object.keys(errors).length > 0) {
+      console.log('❌ Validation errors:', errors);
       setFormErrors(errors);
       return;
     }
@@ -562,33 +707,45 @@ export default function TrafficTab() {
           record.trader_id === traderSettingsForm.trader_id
         );
 
-        if (!originalRecord) return Promise.resolve();
+        if (!originalRecord) {
+          console.warn('⚠️ Original record not found for connection:', connection);
+          return Promise.resolve();
+        }
 
-        return apiClient.patch("/admin/traffic/edit", {
+        const updateData = {
           id: originalRecord.id,
           trader_reward: parseFloat(connection.trader_reward) / 100,
           trader_priority: parseInt(connection.trader_priority),
           enabled: connection.enabled
-        });
+        };
+
+        console.log('📤 Updating trader connection:', updateData);
+        return apiClient.patch("/admin/traffic/edit", updateData);
       });
 
-      await Promise.all(updatePromises);
-      
+      const results = await Promise.all(updatePromises);
+      console.log('✅ Trader settings save results:', results);
+
       toast({
         title: "Настройки сохранены",
         description: "Настройки трейдера успешно обновлены",
       });
-      
+
       await fetchData();
       const updatedTrader = traderTraffic.find(t => t.trader.id === traderSettingsForm.trader_id);
       if (updatedTrader) {
         openTraderSettings(updatedTrader);
       }
     } catch (err: any) {
-      console.error("Ошибка при сохранении настроек трейдера:", err);
+      console.error("❌ Ошибка при сохранении настроек трейдера:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка сохранения",
-        description: err.response?.data?.message || "Не удалось сохранить настройки",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось сохранить настройки",
         variant: "destructive"
       });
     } finally {
@@ -597,6 +754,7 @@ export default function TrafficTab() {
   };
 
   const openAddConnectionModal = (trader_id: string) => {
+    console.log('➕ Opening add connection modal for trader:', trader_id);
     const defaultPlatformFee = "1.000"; // 1% по умолчанию
     
     setNewConnectionForm({
@@ -629,6 +787,13 @@ export default function TrafficTab() {
     const platformFee = parseFloat(newConnectionForm.platform_fee);
     const errors: {[key: string]: string} = {};
 
+    console.log('➕ Creating new connection:', {
+      merchant_id: newConnectionForm.merchant_id,
+      trader_id: newConnectionForm.trader_id,
+      reward,
+      platformFee
+    });
+
     if (!newConnectionForm.merchant_id) {
       errors.merchant_id = "Выберите мерчанта";
     }
@@ -655,13 +820,14 @@ export default function TrafficTab() {
     }
 
     if (Object.keys(errors).length > 0) {
+      console.log('❌ Validation errors:', errors);
       setFormErrors(errors);
       return;
     }
 
     setActionLoading(`add-connection-${newConnectionForm.trader_id}`);
     try {
-      await apiClient.post("/admin/traffic/create", {
+      const createData = {
         merchant_id: newConnectionForm.merchant_id,
         trader_id: newConnectionForm.trader_id,
         trader_reward: reward / 100,
@@ -674,13 +840,17 @@ export default function TrafficTab() {
         traffic_business_params: {
           merchant_deals_duration: newConnectionForm.traffic_business_params.merchant_deals_duration
         }
-      });
-      
+      };
+
+      console.log('📤 Creating new connection:', createData);
+      const response = await apiClient.post("/admin/traffic/create", createData);
+      console.log('✅ Connection created response:', response.data);
+
       toast({
         title: "Подключение создано",
         description: "Новое подключение успешно создано",
       });
-      
+
       await fetchData();
       const updatedTrader = traderTraffic.find(t => t.trader.id === newConnectionForm.trader_id);
       if (updatedTrader) {
@@ -688,10 +858,15 @@ export default function TrafficTab() {
       }
       setAddConnectionModal({ open: false, trader_id: "" });
     } catch (err: any) {
-      console.error("Ошибка при создании подключения:", err);
+      console.error("❌ Ошибка при создании подключения:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка создания",
-        description: err.response?.data?.message || "Не удалось создать подключение",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось создать подключение",
         variant: "destructive"
       });
     } finally {
@@ -702,26 +877,38 @@ export default function TrafficTab() {
   const handleDeleteTrader = async () => {
     if (!deleteTraderDialog.trader) return;
 
+    console.log('🗑️ Deleting trader:', deleteTraderDialog.trader.trader.username);
+
     setActionLoading(`trader-delete-${deleteTraderDialog.trader.trader.id}`);
     try {
-      const deletePromises = deleteTraderDialog.trader.connections.map(connection =>
-        apiClient.delete(`/admin/traffic/${connection.id}`)
-      );
+      const deletePromises = deleteTraderDialog.trader.connections.map(connection => {
+        console.log('🗑️ Deleting trader connection:', connection.id);
+        return apiClient.delete(`/admin/traffic/${connection.id}`);
+      });
 
-      await Promise.all(deletePromises);
-      
+      const results = await Promise.all(deletePromises);
+      console.log('✅ Trader delete results:', results);
+
       toast({
         title: "Трейдер удалён",
         description: `Все записи трафика для ${deleteTraderDialog.trader.trader.username} удалены`,
       });
-      
+
       setDeleteTraderDialog({ open: false, trader: null });
-      fetchData();
+      
+      setTimeout(() => {
+        fetchData();
+      }, 500);
     } catch (err: any) {
-      console.error("Ошибка при удалении трейдера:", err);
+      console.error("❌ Ошибка при удалении трейдера:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка удаления",
-        description: err.response?.data?.message || "Не удалось удалить записи трафика",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось удалить записи трафика",
         variant: "destructive"
       });
     } finally {
@@ -733,9 +920,13 @@ export default function TrafficTab() {
     const connection = traderSettingsModal.trader?.connections[connectionIndex];
     if (!connection) return;
 
+    console.log('🗑️ Deleting connection in modal:', connection.id);
+
     setActionLoading(`connection-delete-${connection.id}`);
     try {
       await apiClient.delete(`/admin/traffic/${connection.id}`);
+      
+      console.log('✅ Connection deleted successfully');
       
       toast({
         title: "Подключение удалено",
@@ -750,10 +941,15 @@ export default function TrafficTab() {
       
       await fetchData();
     } catch (err: any) {
-      console.error("Ошибка при удалении подключения:", err);
+      console.error("❌ Ошибка при удалении подключения:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка удаления",
-        description: err.response?.data?.message || "Не удалось удалить подключение",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось удалить подключение",
         variant: "destructive"
       });
     } finally {
@@ -764,9 +960,13 @@ export default function TrafficTab() {
   const handleDeleteConnection = async () => {
     if (!deleteConnectionDialog.connection) return;
 
+    console.log('🗑️ Deleting single connection:', deleteConnectionDialog.connection.id);
+
     setActionLoading(`connection-delete-${deleteConnectionDialog.connection.id}`);
     try {
       await apiClient.delete(`/admin/traffic/${deleteConnectionDialog.connection.id}`);
+      
+      console.log('✅ Connection deleted successfully');
       
       toast({
         title: "Подключение удалено",
@@ -774,12 +974,20 @@ export default function TrafficTab() {
       });
       
       setDeleteConnectionDialog({ open: false, connection: null });
-      fetchData();
+      
+      setTimeout(() => {
+        fetchData();
+      }, 500);
     } catch (err: any) {
-      console.error("Ошибка при удалении подключения:", err);
+      console.error("❌ Ошибка при удалении подключения:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка удаления",
-        description: err.response?.data?.message || "Не удалось удалить подключение",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось удалить подключение",
         variant: "destructive"
       });
     } finally {
@@ -793,6 +1001,12 @@ export default function TrafficTab() {
     const trader = traders.find(t => t.id === connection.trader_id);
     
     if (!merchant || !trader) return;
+
+    console.log('📝 Opening single connection modal:', {
+      connectionId: connection.id,
+      merchant: merchant.username,
+      trader: trader.username
+    });
 
     setSingleConnectionForm({
       connection_id: connection.id,
@@ -812,6 +1026,13 @@ export default function TrafficTab() {
     const priority = parseInt(singleConnectionForm.trader_priority);
     const errors: {[key: string]: string} = {};
 
+    console.log('💾 Saving single connection:', {
+      connectionId: singleConnectionForm.connection_id,
+      reward,
+      priority,
+      enabled: singleConnectionForm.enabled
+    });
+
     if (isNaN(reward) || reward < 0) {
       errors.trader_reward = "Введите корректную награду";
     }
@@ -829,31 +1050,44 @@ export default function TrafficTab() {
     }
 
     if (Object.keys(errors).length > 0) {
+      console.log('❌ Validation errors:', errors);
       setFormErrors(errors);
       return;
     }
 
     setActionLoading(`single-connection-save-${singleConnectionForm.connection_id}`);
     try {
-      await apiClient.patch("/admin/traffic/edit", {
+      const updateData = {
         id: singleConnectionForm.connection_id,
         trader_reward: reward / 100,
         trader_priority: priority,
         enabled: singleConnectionForm.enabled
-      });
-      
+      };
+
+      console.log('📤 Updating single connection:', updateData);
+      const response = await apiClient.patch("/admin/traffic/edit", updateData);
+      console.log('✅ Single connection update response:', response.data);
+
       toast({
         title: "Настройки сохранены",
         description: "Настройки подключения успешно обновлены",
       });
-      
+
       setSingleConnectionModal({ open: false, connection: null });
-      fetchData();
+      
+      setTimeout(() => {
+        fetchData();
+      }, 500);
     } catch (err: any) {
-      console.error("Ошибка при сохранении настроек подключения:", err);
+      console.error("❌ Ошибка при сохранении настроек подключения:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
       toast({
         title: "Ошибка сохранения",
-        description: err.response?.data?.message || "Не удалось сохранить настройки",
+        description: err.response?.data?.error || err.response?.data?.message || "Не удалось сохранить настройки",
         variant: "destructive"
       });
     } finally {
@@ -882,6 +1116,10 @@ export default function TrafficTab() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Управление трафиком</h1>
+        <Button onClick={fetchData} variant="outline" disabled={loading}>
+          <Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Обновить
+        </Button>
       </div>
 
       {/* Merchants Section */}
@@ -977,6 +1215,9 @@ export default function TrafficTab() {
                           onCheckedChange={() => handleMerchantToggle(merchant)}
                           disabled={actionLoading === `merchant-toggle-${merchant.merchant.id}`}
                         />
+                        {actionLoading === `merchant-toggle-${merchant.merchant.id}` && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -1044,6 +1285,9 @@ export default function TrafficTab() {
                           onCheckedChange={() => handleTraderToggle(trader)}
                           disabled={actionLoading === `trader-toggle-${trader.trader.id}`}
                         />
+                        {actionLoading === `trader-toggle-${trader.trader.id}` && (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -1096,6 +1340,7 @@ export default function TrafficTab() {
         </CardContent>
       </Card>
 
+      {/* Остальные модальные окна остаются без изменений */}
       {/* Merchant Settings Modal */}
       <Dialog open={merchantSettingsModal.open} onOpenChange={(open) => setMerchantSettingsModal({ open, merchant: null })}>
         <DialogContent>
