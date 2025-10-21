@@ -114,7 +114,7 @@ interface CreateTrafficForm {
     antifraud_required: boolean;
   };
   traffic_business_params: {
-    merchant_deals_duration: string;
+    merchant_deals_duration: number;
   };
 }
 
@@ -126,9 +126,8 @@ const PRIORITY_OPTIONS = [
 ];
 
 // Функция для преобразования времени в наносекунды (для Go time.Duration)
-const convertToGoDuration = (hours: number, minutes: number = 0, seconds: number = 0): string => {
-  const totalNanoseconds = (hours * 3600 + minutes * 60 + seconds) * 1e9;
-  return `${totalNanoseconds}`;
+const convertHoursToNanoseconds = (hours: number): number => {
+  return hours * 60 * 60 * 1e9; // часы -> минуты -> секунды -> наносекунды
 };
 
 // Функция для валидации ввода процентов
@@ -196,7 +195,7 @@ export default function TrafficTab() {
       antifraud_required: false
     },
     traffic_business_params: {
-      merchant_deals_duration: convertToGoDuration(24) // 24 часа по умолчанию
+      merchant_deals_duration: convertHoursToNanoseconds(24) // 24 часа по умолчанию в наносекундах
     }
   });
 
@@ -618,7 +617,7 @@ export default function TrafficTab() {
         antifraud_required: false
       },
       traffic_business_params: {
-        merchant_deals_duration: convertToGoDuration(24) // 24 часа по умолчанию
+        merchant_deals_duration: convertHoursToNanoseconds(24) // 24 часа по умолчанию в наносекундах
       }
     });
     setAddConnectionModal({ open: true, trader_id });
