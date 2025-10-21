@@ -26,16 +26,25 @@ interface User {
 
 interface TrafficRecord {
   id: string;
-  trader_id: string;
   merchant_id: string;
+  trader_id: string;
   trader_reward: number;
   trader_priority: number;
   platform_fee: number;
   enabled: boolean;
-  merchant_unlocked: boolean;
-  trader_unlocked: boolean;
-  antifraud_unlocked: boolean;
-  manually_unlocked: boolean;
+  name: string;
+  traffic_activity_params: {
+    merchant_unlocked: boolean;
+    trader_unlocked: boolean;
+    antifraud_unlocked: boolean;
+    manually_unlocked: boolean;
+  };
+  traffic_antifraud_params: {
+    antifraud_required: boolean;
+  };
+  traffic_business_params: {
+    merchant_deals_duration: string;
+  };
 }
 
 interface MerchantTraffic {
@@ -85,6 +94,28 @@ interface SingleConnectionForm {
   trader_reward: string;
   trader_priority: string;
   enabled: boolean;
+}
+
+interface CreateTrafficForm {
+  merchant_id: string;
+  trader_id: string;
+  trader_reward: string;
+  trader_priority: string;
+  platform_fee: string;
+  enabled: boolean;
+  name: string;
+  traffic_activity_params: {
+    merchant_unlocked: boolean;
+    trader_unlocked: boolean;
+    antifraud_unlocked: boolean;
+    manually_unlocked: boolean;
+  };
+  traffic_antifraud_params: {
+    antifraud_required: boolean;
+  };
+  traffic_business_params: {
+    merchant_deals_duration: string;
+  };
 }
 
 const PRIORITY_OPTIONS = [
@@ -141,11 +172,26 @@ export default function TrafficTab() {
     connections: []
   });
 
-  const [newConnectionForm, setNewConnectionForm] = useState<TraderConnectionForm>({
+  const [newConnectionForm, setNewConnectionForm] = useState<CreateTrafficForm>({
     merchant_id: "",
+    trader_id: "",
     trader_reward: "",
     trader_priority: "1",
-    enabled: true
+    platform_fee: "",
+    enabled: true,
+    name: "",
+    traffic_activity_params: {
+      merchant_unlocked: true,
+      trader_unlocked: true,
+      antifraud_unlocked: true,
+      manually_unlocked: true
+    },
+    traffic_antifraud_params: {
+      antifraud_required: false
+    },
+    traffic_business_params: {
+      merchant_deals_duration: "0"
+    }
   });
 
   const [singleConnectionForm, setSingleConnectionForm] = useState<SingleConnectionForm>({
@@ -167,7 +213,7 @@ export default function TrafficTab() {
         apiClient.get("/admin/users?role=MERCHANT"),
         apiClient.get("/admin/users?role=TRADER"),
         apiClient.get("/admin/users?role=TEAM_LEAD"),
-        apiClient.get("/admin/traffic/records?page=1&limit=100")
+        apiClient.get("/admin/traffic/records?page=1&limit=1000")
       ]);
       
       const allTraders = [
@@ -200,7 +246,7 @@ export default function TrafficTab() {
     const platformFee = merchantRecords.length > 0 ? merchantRecords[0].platform_fee : 0;
     const enabled = merchantRecords.some(record => record.enabled);
     const connections_count = merchantRecords.length;
-    const merchant_unlocked = merchantRecords.some(record => record.merchant_unlocked);
+    const merchant_unlocked = merchantRecords.some(record => record.traffic_activity_params.merchant_unlocked);
     
     const connectedTraders = merchantRecords.map(record => {
       const trader = traders.find(t => t.id === record.trader_id);
@@ -221,13 +267,13 @@ export default function TrafficTab() {
   const traderTraffic: TraderTraffic[] = traders.map(trader => {
     const connections = trafficRecords.filter(record => record.trader_id === trader.id);
     const enabled = connections.some(connection => connection.enabled);
-    const manually_unlocked = connections.some(connection => connection.manually_unlocked);
+    const manually_unlocked = connections.some(connection => connection.traffic_activity_params.manually_unlocked);
 
     const lock_statuses = {
-      merchant_unlocked: connections.some(connection => connection.merchant_unlocked),
-      trader_unlocked: connections.some(connection => connection.trader_unlocked),
-      antifraud_unlocked: connections.some(connection => connection.antifraud_unlocked),
-      manually_unlocked: connections.some(connection => connection.manually_unlocked)
+      merchant_unlocked: connections.some(connection => connection.traffic_activity_params.merchant_unlocked),
+      trader_unlocked: connections.some(connection => connection.traffic_activity_params.trader_unlocked),
+      antifraud_unlocked: connections.some(connection => connection.traffic_activity_params.antifraud_unlocked),
+      manually_unlocked: connections.some(connection => connection.traffic_activity_params.manually_unlocked)
     };
 
     return {
@@ -347,15 +393,14 @@ export default function TrafficTab() {
 
     setActionLoading(`merchant-save-${merchantSettingsForm.merchant_id}`);
     try {
+      // Обновляем все записи трафика для этого мерчанта
       const updatePromises = trafficRecords
         .filter(record => record.merchant_id === merchantSettingsForm.merchant_id)
         .map(record => 
           apiClient.patch("/admin/traffic/edit", {
-            traffic: {
-              ...record,
-              platform_fee: platformFee / 100,
-              enabled: merchantSettingsForm.enabled
-            }
+            id: record.id,
+            platform_fee: platformFee / 100,
+            enabled: merchantSettingsForm.enabled
           })
         );
 
@@ -414,6 +459,7 @@ export default function TrafficTab() {
   const handleTraderToggle = async (traderTraffic: TraderTraffic) => {
     setActionLoading(`trader-toggle-${traderTraffic.trader.id}`);
     try {
+      // Для каждого подключения трейдера устанавливаем manually_unlocked
       const updatePromises = traderTraffic.connections.map(connection =>
         apiClient.patch(`/traffic/${connection.id}/manual?unlocked=${!traderTraffic.manually_unlocked}`)
       );
@@ -514,12 +560,10 @@ export default function TrafficTab() {
         if (!originalRecord) return Promise.resolve();
 
         return apiClient.patch("/admin/traffic/edit", {
-          traffic: {
-            ...originalRecord,
-            trader_reward: parseFloat(connection.trader_reward) / 100,
-            trader_priority: parseInt(connection.trader_priority),
-            enabled: connection.enabled
-          }
+          id: originalRecord.id,
+          trader_reward: parseFloat(connection.trader_reward) / 100,
+          trader_priority: parseInt(connection.trader_priority),
+          enabled: connection.enabled
         });
       });
 
@@ -548,11 +592,28 @@ export default function TrafficTab() {
   };
 
   const openAddConnectionModal = (trader_id: string) => {
+    const defaultPlatformFee = "1.000"; // 1% по умолчанию
+    
     setNewConnectionForm({
       merchant_id: "",
+      trader_id: trader_id,
       trader_reward: "",
       trader_priority: "1",
-      enabled: true
+      platform_fee: defaultPlatformFee,
+      enabled: true,
+      name: "",
+      traffic_activity_params: {
+        merchant_unlocked: true,
+        trader_unlocked: true,
+        antifraud_unlocked: true,
+        manually_unlocked: true
+      },
+      traffic_antifraud_params: {
+        antifraud_required: false
+      },
+      traffic_business_params: {
+        merchant_deals_duration: "24h0m0s" // 24 часа по умолчанию
+      }
     });
     setAddConnectionModal({ open: true, trader_id });
     setFormErrors({});
@@ -560,6 +621,7 @@ export default function TrafficTab() {
 
   const handleAddConnection = async () => {
     const reward = parseFloat(newConnectionForm.trader_reward);
+    const platformFee = parseFloat(newConnectionForm.platform_fee);
     const errors: {[key: string]: string} = {};
 
     if (!newConnectionForm.merchant_id) {
@@ -570,13 +632,21 @@ export default function TrafficTab() {
       errors.trader_reward = "Введите корректную награду";
     }
 
+    if (isNaN(platformFee) || platformFee < 0) {
+      errors.platform_fee = "Введите корректную комиссию платформы";
+    }
+
     const existingConnection = trafficRecords.find(record => 
       record.merchant_id === newConnectionForm.merchant_id && 
-      record.trader_id === addConnectionModal.trader_id
+      record.trader_id === newConnectionForm.trader_id
     );
 
     if (existingConnection) {
       errors.merchant_id = "Этот мерчант уже подключен к данному трейдеру";
+    }
+
+    if (reward > platformFee) {
+      errors.trader_reward = "Награда трейдера не может превышать комиссию платформы";
     }
 
     if (Object.keys(errors).length > 0) {
@@ -584,18 +654,19 @@ export default function TrafficTab() {
       return;
     }
 
-    setActionLoading(`add-connection-${addConnectionModal.trader_id}`);
+    setActionLoading(`add-connection-${newConnectionForm.trader_id}`);
     try {
-      const merchantRecord = trafficRecords.find(record => record.merchant_id === newConnectionForm.merchant_id);
-      const platform_fee = merchantRecord ? merchantRecord.platform_fee : 0.1;
-
       await apiClient.post("/admin/traffic/create", {
         merchant_id: newConnectionForm.merchant_id,
-        trader_id: addConnectionModal.trader_id,
+        trader_id: newConnectionForm.trader_id,
         trader_reward: reward / 100,
         trader_priority: parseInt(newConnectionForm.trader_priority),
-        platform_fee: platform_fee,
-        enabled: newConnectionForm.enabled
+        platform_fee: platformFee / 100,
+        enabled: newConnectionForm.enabled,
+        name: newConnectionForm.name || `${merchants.find(m => m.id === newConnectionForm.merchant_id)?.username} - ${traders.find(t => t.id === newConnectionForm.trader_id)?.username}`,
+        traffic_activity_params: newConnectionForm.traffic_activity_params,
+        traffic_antifraud_params: newConnectionForm.traffic_antifraud_params,
+        traffic_business_params: newConnectionForm.traffic_business_params
       });
       
       toast({
@@ -604,7 +675,7 @@ export default function TrafficTab() {
       });
       
       await fetchData();
-      const updatedTrader = traderTraffic.find(t => t.trader.id === addConnectionModal.trader_id);
+      const updatedTrader = traderTraffic.find(t => t.trader.id === newConnectionForm.trader_id);
       if (updatedTrader) {
         openTraderSettings(updatedTrader);
       }
@@ -758,14 +829,10 @@ export default function TrafficTab() {
     setActionLoading(`single-connection-save-${singleConnectionForm.connection_id}`);
     try {
       await apiClient.patch("/admin/traffic/edit", {
-        traffic: {
-          id: singleConnectionForm.connection_id,
-          merchant_id: singleConnectionForm.merchant_id,
-          trader_id: singleConnectionForm.trader_id,
-          trader_reward: reward / 100,
-          trader_priority: priority,
-          enabled: singleConnectionForm.enabled
-        }
+        id: singleConnectionForm.connection_id,
+        trader_reward: reward / 100,
+        trader_priority: priority,
+        enabled: singleConnectionForm.enabled
       });
       
       toast({
@@ -793,16 +860,6 @@ export default function TrafficTab() {
       .map(record => record.merchant_id);
 
     return merchants.filter(merchant => !connectedMerchantIds.includes(merchant.id));
-  };
-
-  // Функция для поиска трейдера в выпадающем списке
-  const filterTraders = (merchantId: string, searchTerm: string) => {
-    const connectedTraders = merchantTraffic.find(m => m.merchant.id === merchantId)?.connected_traders || [];
-    return connectedTraders.filter(trader => 
-      trader.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      trader.login.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      trader.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
   };
 
   if (loading) {
@@ -1320,7 +1377,7 @@ export default function TrafficTab() {
 
       {/* Add Connection Modal */}
       <Dialog open={addConnectionModal.open} onOpenChange={(open) => setAddConnectionModal({ open, trader_id: "" })}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Добавить подключение</DialogTitle>
             <DialogDescription>
@@ -1351,22 +1408,42 @@ export default function TrafficTab() {
               )}
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="new-reward">Награда трейдера (%)</Label>
-              <Input
-                id="new-reward"
-                type="text"
-                placeholder="8.000"
-                value={newConnectionForm.trader_reward}
-                onChange={(e) => setNewConnectionForm({
-                  ...newConnectionForm, 
-                  trader_reward: validatePercentageInput(e.target.value)
-                })}
-                className={formErrors.trader_reward ? "border-red-500" : ""}
-              />
-              {formErrors.trader_reward && (
-                <div className="text-red-500 text-xs">{formErrors.trader_reward}</div>
-              )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="new-reward">Награда трейдера (%)</Label>
+                <Input
+                  id="new-reward"
+                  type="text"
+                  placeholder="8.000"
+                  value={newConnectionForm.trader_reward}
+                  onChange={(e) => setNewConnectionForm({
+                    ...newConnectionForm, 
+                    trader_reward: validatePercentageInput(e.target.value)
+                  })}
+                  className={formErrors.trader_reward ? "border-red-500" : ""}
+                />
+                {formErrors.trader_reward && (
+                  <div className="text-red-500 text-xs">{formErrors.trader_reward}</div>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="new-platform-fee">Комиссия платформы (%)</Label>
+                <Input
+                  id="new-platform-fee"
+                  type="text"
+                  placeholder="1.000"
+                  value={newConnectionForm.platform_fee}
+                  onChange={(e) => setNewConnectionForm({
+                    ...newConnectionForm, 
+                    platform_fee: validatePercentageInput(e.target.value)
+                  })}
+                  className={formErrors.platform_fee ? "border-red-500" : ""}
+                />
+                {formErrors.platform_fee && (
+                  <div className="text-red-500 text-xs">{formErrors.platform_fee}</div>
+                )}
+              </div>
             </div>
             
             <div className="space-y-2">
@@ -1386,6 +1463,17 @@ export default function TrafficTab() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-name">Название подключения (опционально)</Label>
+              <Input
+                id="new-name"
+                type="text"
+                placeholder="Мерчант - Трейдер"
+                value={newConnectionForm.name}
+                onChange={(e) => setNewConnectionForm({...newConnectionForm, name: e.target.value})}
+              />
             </div>
             
             <div className="flex items-center space-x-2">
