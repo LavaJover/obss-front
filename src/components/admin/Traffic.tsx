@@ -125,6 +125,12 @@ const PRIORITY_OPTIONS = [
   { label: "Превосходство", value: "1000" }
 ];
 
+// Функция для преобразования времени в наносекунды (для Go time.Duration)
+const convertToGoDuration = (hours: number, minutes: number = 0, seconds: number = 0): string => {
+  const totalNanoseconds = (hours * 3600 + minutes * 60 + seconds) * 1e9;
+  return `${totalNanoseconds}`;
+};
+
 // Функция для валидации ввода процентов
 const validatePercentageInput = (value: string): string => {
   const cleanedValue = value.replace(/[^\d.]/g, '');
@@ -190,7 +196,7 @@ export default function TrafficTab() {
       antifraud_required: false
     },
     traffic_business_params: {
-      merchant_deals_duration: "0"
+      merchant_deals_duration: convertToGoDuration(24) // 24 часа по умолчанию
     }
   });
 
@@ -213,7 +219,7 @@ export default function TrafficTab() {
         apiClient.get("/admin/users?role=MERCHANT"),
         apiClient.get("/admin/users?role=TRADER"),
         apiClient.get("/admin/users?role=TEAM_LEAD"),
-        apiClient.get("/admin/traffic/records?page=1&limit=100")
+        apiClient.get("/admin/traffic/records?page=1&limit=1000")
       ]);
       
       const allTraders = [
@@ -612,7 +618,7 @@ export default function TrafficTab() {
         antifraud_required: false
       },
       traffic_business_params: {
-        merchant_deals_duration: "24h0m0s" // 24 часа по умолчанию
+        merchant_deals_duration: convertToGoDuration(24) // 24 часа по умолчанию
       }
     });
     setAddConnectionModal({ open: true, trader_id });
@@ -666,7 +672,9 @@ export default function TrafficTab() {
         name: newConnectionForm.name || `${merchants.find(m => m.id === newConnectionForm.merchant_id)?.username} - ${traders.find(t => t.id === newConnectionForm.trader_id)?.username}`,
         traffic_activity_params: newConnectionForm.traffic_activity_params,
         traffic_antifraud_params: newConnectionForm.traffic_antifraud_params,
-        traffic_business_params: newConnectionForm.traffic_business_params
+        traffic_business_params: {
+          merchant_deals_duration: newConnectionForm.traffic_business_params.merchant_deals_duration
+        }
       });
       
       toast({
