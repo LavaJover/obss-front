@@ -32,6 +32,20 @@ const banksList = [
   "WebMoney"
 ];
 
+// Банки для TJS (Таджикистан)
+const banksListTJS = [
+  { code: "dushanbe_city", name: "Душанбе сити", nspkCode: "" },
+  { code: "alif", name: "Алиф", nspkCode: "" },
+  { code: "eskhata", name: "Эсхата", nspkCode: "" },
+  { code: "spitamen", name: "Спитамен", nspkCode: "" },
+  { code: "vasl", name: "Васл", nspkCode: "" },
+  { code: "imon", name: "Имон", nspkCode: "" },
+  { code: "matin", name: "Матин", nspkCode: "" },
+  { code: "ssb", name: "Ссб", nspkCode: "" },
+  { code: "international_bank_tajikistan", name: "Международный банк Таджикистана", nspkCode: "" },
+  { code: "orien", name: "Ориен", nspkCode: "" }
+];
+
 // Функции форматирования
 const formatCardNumber = (number: string) => {
   return number.replace(/(\d{4})/g, '$1 ').trim();
@@ -93,7 +107,7 @@ export default function PaymentDetails() {
     addDevice, 
     updateDevice, 
     deleteDevice,
-    fetchDevices // Добавляем получение функции
+    fetchDevices
   } = useBankDetails();
   
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -103,6 +117,14 @@ export default function PaymentDetails() {
   const [banks, setBanks] = useState<Array<{code: string; name: string; nspkCode: string}>>([]);
   const [banksLoading, setBanksLoading] = useState(false);
   const [banksError, setBanksError] = useState<string | null>(null);
+  
+  // Filter state
+  const [filters, setFilters] = useState({
+    currency: "all",
+    paymentMethod: "all", 
+    paymentType: "all",
+    status: "all"
+  });
   
   // Devices state
   const [devicesDialogOpen, setDevicesDialogOpen] = useState(false);
@@ -137,11 +159,17 @@ export default function PaymentDetails() {
     max_orders_simultaneosly: "",
     delay: "",
     device_id: "unattached",
-    enabled: true
+    enabled: true,
+    conversion_currency: ""
   });
 
   const [errors, setErrors] = useState<{[key: string]: string}>({});
   const [formLoading, setFormLoading] = useState(false);
+
+  // Проверка является ли выбранный способ оплаты трансграничным
+  const isTransgranPayment = () => {
+    return formData.payment_system === "SBP_TRANSGRAN" || formData.payment_system === "C2C_TRANSGRAN";
+  };
 
   // Функция для получения JWT токена
   const getJwtToken = (): string | null => {
@@ -166,8 +194,14 @@ export default function PaymentDetails() {
     setBanksLoading(true);
     setBanksError(null);
     try {
-      const response = await apiClient.get('/merchant/banks');
-      setBanks(response.data);
+      // Если выбрана валюта конвертации TJS, используем список банков Таджикистана
+      if (formData.conversion_currency === "TJS") {
+        setBanks(banksListTJS);
+      } else {
+        // Иначе загружаем стандартные банки
+        const response = await apiClient.get('/merchant/banks');
+        setBanks(response.data);
+      }
     } catch (error: any) {
       console.error("Ошибка при загрузке банков:", error);
       setBanksError(error.response?.data?.message || "Не удалось загрузить список банков");
@@ -183,15 +217,7 @@ export default function PaymentDetails() {
 
   useEffect(() => {
     fetchBanks();
-  }, []);
-  
-  // Filter state
-  const [filters, setFilters] = useState({
-    currency: "all",
-    paymentMethod: "all", 
-    paymentType: "all",
-    status: "all"
-  });
+  }, [formData.conversion_currency]);
 
   const handleBankChange = (bankCode: string) => {
     const selectedBank = banks.find(bank => bank.code === bankCode);
@@ -240,7 +266,6 @@ export default function PaymentDetails() {
     setDeviceErrors({});
   };
 
-  // Обновляем функцию handleDeviceDelete
   const handleDeviceDelete = async (id: string) => {
     try {
       await deleteDevice(id);
@@ -267,7 +292,6 @@ export default function PaymentDetails() {
     setDeviceErrors({});
   };
 
-  // Обновляем функцию handleDeviceSave
   const handleDeviceSave = async () => {
     if (!validateDeviceForm()) {
       toast({
@@ -280,7 +304,6 @@ export default function PaymentDetails() {
 
     try {
       if (editingDeviceId) {
-        // Редактирование существующего устройства
         await updateDevice(editingDeviceId, {
           deviceName: deviceFormData.name,
           enabled: deviceFormData.status === "active"
@@ -291,7 +314,6 @@ export default function PaymentDetails() {
           description: "Устройство было успешно обновлено",
         });
       } else {
-        // Создание нового устройства
         await addDevice({
           deviceName: deviceFormData.name,
           enabled: deviceFormData.status === "active"
@@ -314,7 +336,6 @@ export default function PaymentDetails() {
     }
   };
 
-  // Обновляем функцию показа QR-кода
   const handleShowQrCode = (device: any) => {
     setCurrentQrDevice({
       deviceId: device.deviceId,
@@ -327,7 +348,6 @@ export default function PaymentDetails() {
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     
-    // Очищаем ошибку при изменении поля
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
@@ -346,10 +366,8 @@ export default function PaymentDetails() {
   };
 
   const formatPhoneForBackend = (phone: string): string => {
-    // Убираем все нецифровые символы
     const cleaned = phone.replace(/\D/g, '');
     
-    // Если номер начинается с +7, заменяем на 8
     if (cleaned.startsWith('7')) {
       return '8' + cleaned.substring(1);
     }
@@ -365,19 +383,18 @@ export default function PaymentDetails() {
     if (!formData.owner.trim()) newErrors.owner = "Укажите имя владельца";
     if (!formData.currency) newErrors.currency = "Выберите валюту";
     if (!formData.payment_system) newErrors.payment_system = "Выберите способ оплаты";
-    // Валидация для задержки
+    
     if (formData.delay) {
       const delayValue = Number(formData.delay);
       if (isNaN(delayValue) || delayValue < 0) {
         newErrors.delay = "Введите положительное число";
       }
     }
-    // Валидация устройства
+    
     if (formData.device_id && formData.device_id !== "unattached" && !devices.some(device => device.deviceId === formData.device_id)) {
       newErrors.device_id = "Выбрано несуществующее устройство";
     }
     
-    // Валидация номера карты/телефона в зависимости от способа оплаты
     if (formData.payment_system === "C2C") {
       const cleanedCardNumber = formData.card_number.replace(/\s/g, '');
       if (!cleanedCardNumber) {
@@ -385,7 +402,6 @@ export default function PaymentDetails() {
       } else if (cleanedCardNumber.length !== 16) {
         newErrors.card_number = "Номер карты должен содержать 16 цифр";
       }
-
     } else if (formData.payment_system === "SBP") {
       const cleanedPhone = formatPhoneForBackend(formData.phone);
       if (!cleanedPhone) {
@@ -393,9 +409,11 @@ export default function PaymentDetails() {
       } else if (!/^8\d{10}$/.test(cleanedPhone)) {
         newErrors.phone = "Неверный формат телефона (8XXXXXXXXXX)";
       }
-    }else if (formData.payment_system == "SBP_TRANSGRAN") {
-      if (!formData.phone) {
+    } else if (formData.payment_system === "SBP_TRANSGRAN" || formData.payment_system === "C2C_TRANSGRAN") {
+      if (formData.payment_system === "SBP_TRANSGRAN" && !formData.phone) {
         newErrors.phone = "Укажите номер телефона";
+      } else if (formData.payment_system === "C2C_TRANSGRAN" && !formData.card_number) {
+        newErrors.card_number = "Укажите номер карты";
       }
     }
     
@@ -417,9 +435,21 @@ export default function PaymentDetails() {
     setFormLoading(true);
     
     try {
-      // Подготовка данных для отправки
+      let paymentSystemToSend = formData.payment_system;
+      let currencyToSend = formData.currency;
+
+      if (formData.payment_system === "SBP_TRANSGRAN") {
+        paymentSystemToSend = "SPB";
+        currencyToSend = "tjs";
+      } else if (formData.payment_system === "C2C_TRANSGRAN") {
+        paymentSystemToSend = "C2C";
+        currencyToSend = "tjs";
+      }
+
       const formDataToSend = {
         ...formData,
+        payment_system: paymentSystemToSend,
+        currency: currencyToSend,
         phone: formData.phone ? formatPhoneForBackend(formData.phone) : "",
         card_number: formData.card_number ? formData.card_number.replace(/\s/g, '') : "",
         device_id: formData.device_id === "unattached" ? "" : formData.device_id
@@ -495,7 +525,8 @@ export default function PaymentDetails() {
       max_orders_simultaneosly: "",
       delay: "",
       enabled: true,
-      device_id: "unattached"
+      device_id: "unattached",
+      conversion_currency: ""
     });
     setEditingId(null);
     setErrors({});
@@ -503,10 +534,24 @@ export default function PaymentDetails() {
 
   // Обработчик редактирования реквизита
   const handleEdit = (detail: BankDetail) => {
+    const isTransgran = detail.currency === "tjs";
+    let paymentSystem = detail.payment_system;
+    let conversionCurrency = "";
+
+    if (isTransgran) {
+      if (detail.payment_system === "SPB") {
+        paymentSystem = "SBP_TRANSGRAN";
+        conversionCurrency = "TJS";
+      } else if (detail.payment_system === "C2C") {
+        paymentSystem = "C2C_TRANSGRAN";
+        conversionCurrency = "TJS";
+      }
+    }
+
     setEditingId(detail.id);
     setFormData({
-      currency: detail.currency,
-      payment_system: detail.payment_system,
+      currency: isTransgran ? "RUB" : detail.currency,
+      payment_system: paymentSystem,
       bank_name: detail.bank_name,
       bank_code: detail.bank_code,
       card_number: detail.card_number ? formatCardNumberDisplay(detail.card_number) : "",
@@ -519,9 +564,10 @@ export default function PaymentDetails() {
       max_quantity_day: detail.max_quantity_day.toString(),
       max_quantity_month: detail.max_quantity_month.toString(),
       max_orders_simultaneosly: detail.max_orders_simultaneosly.toString(),
-      delay: (detail.delay / 60000).toString(), // Конвертируем миллисекунды в минуты
+      delay: (detail.delay / 60000).toString(),
       enabled: detail.enabled,
       device_id: detail.device_id || "unattached",
+      conversion_currency: conversionCurrency
     });
     setDialogOpen(true);
   };
@@ -553,7 +599,6 @@ export default function PaymentDetails() {
     if (filters.currency !== "all" && detail.currency !== filters.currency) return false;
     if (filters.paymentMethod !== "all" && detail.payment_system !== filters.paymentMethod) return false;
     if (filters.paymentType !== "all") {
-      // Group payment types
       const cardTypes = ["C2C"];
       const digitalTypes = ["SBP"];
       
@@ -614,6 +659,7 @@ export default function PaymentDetails() {
         <h1 className="text-3xl font-bold text-foreground">Реквизиты</h1>
         
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Диалог добавления реквизита */}
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             if (open) {
               resetForm();
@@ -629,589 +675,562 @@ export default function PaymentDetails() {
                 Добавить реквизит
               </Button>
             </DialogTrigger>
-            
-            {/* Devices Dialog */}
-            <Dialog open={devicesDialogOpen} onOpenChange={(open) => {
-              if (!open) {
-                resetDeviceForm();
-                setDevicesDialogOpen(false);
-              } else {
-                setDevicesDialogOpen(true);
-              }
-            }}>
-              <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Monitor className="mr-2 h-4 w-4" />
-                  Устройства
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Управление устройствами</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  {/* Devices Table */}
-                  <div className="border rounded-lg overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                           <TableRow>
-                             <TableHead>ID</TableHead>
-                             <TableHead>Имя</TableHead>
-                             <TableHead>Статус</TableHead>
-                             <TableHead>Действия</TableHead>
-                           </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {devices.length === 0 ? (
-                          <TableRow>
-                             <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                               Нет добавленных устройств
-                             </TableCell>
-                          </TableRow>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingId ? "Редактировать реквизит" : "Добавить новый реквизит"}</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currency">Валюта*</Label>
+                    <Select 
+                      value={formData.currency} 
+                      onValueChange={value => handleInputChange("currency", value)}
+                    >
+                      <SelectTrigger className={errors.currency ? "border-red-500" : ""}>
+                        <SelectValue placeholder="Выберите валюту" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="RUB">RUB</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {errors.currency && <span className="text-red-500 text-xs">{errors.currency}</span>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="payment_system">Способ оплаты*</Label>
+                    <Select 
+                      value={formData.payment_system} 
+                      onValueChange={value => {
+                        handleInputChange("payment_system", value);
+                        handleInputChange("phone", "");
+                        handleInputChange("card_number", "");
+                        if (value !== "SBP_TRANSGRAN" && value !== "C2C_TRANSGRAN") {
+                          handleInputChange("conversion_currency", "");
+                        }
+                      }}
+                    >
+                      <SelectTrigger className={errors.payment_system ? "border-red-500" : ""}>
+                        <SelectValue placeholder="Выберите способ" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="SBP">СБП</SelectItem>
+                        <SelectItem value="C2C">Карта (C2C)</SelectItem>
+                        <SelectItem value="SBP_TRANSGRAN">СБП Трансгран</SelectItem>
+                        <SelectItem value="C2C_TRANSGRAN">C2C Трансгран</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {errors.payment_system && <span className="text-red-500 text-xs">{errors.payment_system}</span>}
+                  </div>
+                </div>
+
+                {/* Поле выбора валюты конвертации для трансграничных способов */}
+                {isTransgranPayment() && (
+                  <div className="space-y-2">
+                    <Label htmlFor="conversion_currency">Валюта конвертации*</Label>
+                    <Select 
+                      value={formData.conversion_currency} 
+                      onValueChange={value => handleInputChange("conversion_currency", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите валюту конвертации" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TJS">TJS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bank_name">Банк*</Label>
+                    <Select 
+                      value={formData.bank_code} 
+                      onValueChange={handleBankChange}
+                      disabled={banksLoading || banks.length === 0}
+                    >
+                      <SelectTrigger className={errors.bank_code ? "border-red-500" : ""}>
+                        <SelectValue placeholder={
+                          banksLoading ? "Загрузка банков..." : 
+                          formData.conversion_currency === "TJS" ? "Выберите банк Таджикистана" : "Выберите банк"
+                        } />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {banksLoading ? (
+                          <SelectItem value="loading" disabled>Загрузка банков...</SelectItem>
+                        ) : banksError ? (
+                          <SelectItem value="error" disabled>{banksError}</SelectItem>
                         ) : (
-                          devices.map(device => (
-                            <TableRow key={device.deviceId}>
-                              <TableCell className="font-mono text-sm">#{device.deviceId}</TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-2">
-                                  {device.enabled ? 
-                                    <Smartphone className="h-4 w-4 text-green-500" /> : 
-                                    <Monitor className="h-4 w-4 text-gray-400" />
-                                  }
-                                  <span>{device.deviceName}</span>
-                                </div>
-                              </TableCell>
-                               <TableCell>
-                                 <Badge variant={device.enabled ? "default" : "secondary"}>
-                                   {device.enabled ? "Активно" : "Неактивно"}
-                                 </Badge>
-                               </TableCell>
-                               <TableCell>
-                                <div className="flex items-center gap-2">
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => handleShowQrCode(device)}
-                                  >
-                                    <QrCode className="h-4 w-4" />
-                                  </Button>
-                                  <Button 
-                                    variant="outline" 
-                                    size="sm"
-                                    onClick={() => handleDeviceEdit(device)}
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button variant="destructive" size="sm">
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Удалить устройство?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          Это действие нельзя отменить. Устройство будет удалено из системы.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Отмена</AlertDialogCancel>
-                                        <AlertDialogAction 
-                                          onClick={() => handleDeviceDelete(device.deviceId)}
-                                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                        >
-                                          Удалить
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
-                                </div>
-                              </TableCell>
-                            </TableRow>
+                          banks.map(bank => (
+                            <SelectItem key={bank.code} value={bank.code}>
+                              {bank.name}
+                            </SelectItem>
                           ))
                         )}
-                      </TableBody>
-                    </Table>
+                      </SelectContent>
+                    </Select>
+                    {errors.bank_name && <span className="text-red-500 text-xs">{errors.bank_name}</span>}
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="owner">Имя владельца*</Label>
+                    <Input 
+                      placeholder="Например: Иван И." 
+                      value={formData.owner} 
+                      onChange={e => handleInputChange("owner", e.target.value)}
+                      className={errors.owner ? "border-red-500" : ""}
+                    />
+                    {errors.owner && <span className="text-red-500 text-xs">{errors.owner}</span>}
+                  </div>
+                </div>
 
-                  {/* Add Device Form */}
-                  <div className="border-t pt-4">
-                    <h4 className="font-medium mb-4">
-                      {editingDeviceId ? "Редактировать устройство" : "Добавить новое устройство"}
-                    </h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="deviceName">Название устройства*</Label>
-                        <Input 
-                          id="deviceName"
-                          placeholder="Например: Рабочий компьютер" 
-                          value={deviceFormData.name} 
-                          onChange={e => handleDeviceInputChange("name", e.target.value)}
-                          className={deviceErrors.name ? "border-red-500" : ""}
-                        />
-                        {deviceErrors.name && <span className="text-red-500 text-xs">{deviceErrors.name}</span>}
-                       </div>
-                       <div className="space-y-2">
-                        <Label htmlFor="deviceStatus">Статус</Label>
-                        <Select 
-                          value={deviceFormData.status} 
-                          onValueChange={value => handleDeviceInputChange("status", value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Выберите статус" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="active">Активно</SelectItem>
-                            <SelectItem value="inactive">Неактивно</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
+                {/* Conditional phone/card field */}
+                {formData.payment_system === "C2C" || formData.payment_system === "C2C_TRANSGRAN" ? (
+                    <div className="space-y-2">
+                    <Label htmlFor="card_number">Номер карты*</Label>
+                    <Input 
+                      placeholder={formData.payment_system === "C2C_TRANSGRAN" ? "Введите номер карты" : "0000 0000 0000 0000"} 
+                      value={formData.card_number} 
+                      onChange={e => {
+                        if (formData.payment_system === "C2C_TRANSGRAN") {
+                          handleInputChange("card_number", e.target.value);
+                        } else {
+                          const value = e.target.value.replace(/\D/g, '');
+                          if (value.length <= 16) {
+                            const formattedValue = value.replace(/(\d{4})/g, '$1 ').trim();
+                            handleInputChange("card_number", formattedValue);
+                          }
+                        }
+                      }}
+                      className={errors.card_number ? "border-red-500" : ""}
+                      maxLength={formData.payment_system === "C2C_TRANSGRAN" ? undefined : 19}
+                    />
+                    {errors.card_number && <span className="text-red-500 text-xs">{errors.card_number}</span>}
+                  </div>
+                ) : formData.payment_system === "SBP" || formData.payment_system === "SBP_TRANSGRAN" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Телефон*</Label>
+                    <Input 
+                      placeholder={formData.payment_system === "SBP_TRANSGRAN" ? "+992 99 123-45-67" : "+7 (123) 456-78-90"} 
+                      value={formData.phone} 
+                      onChange={e => {
+                        if (formData.payment_system === "SBP_TRANSGRAN") {
+                          handleInputChange("phone", e.target.value);
+                        } else {
+                          let value = e.target.value.replace(/[^\d+]/g, '');
+                          if (value.length > 12) {
+                            value = value.substring(0, 12);
+                          }
+                          
+                          let formattedValue = value;
+                          if (value.startsWith('+7') && value.length > 2) {
+                            const numbers = value.substring(2).replace(/\D/g, '');
+                            formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
+                          } else if (value.startsWith('8') && value.length > 1) {
+                            const numbers = value.substring(1).replace(/\D/g, '');
+                            formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
+                          }
+                          
+                          handleInputChange("phone", formattedValue);
+                        }
+                      }}
+                      className={errors.phone ? "border-red-500" : ""}
+                      maxLength={formData.payment_system === "SBP_TRANSGRAN" ? undefined : 18}
+                    />
+                    {errors.phone && <span className="text-red-500 text-xs">{errors.phone}</span>}
+                  </div>
+                ) : null}
+
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-4">Лимиты</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Мин сумма сделки</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="0" 
+                        min="0"
+                        value={formData.min_amount} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("min_amount", value);
+                          }
+                        }}
+                        className={errors.min_amount ? "border-red-500" : ""}
+                      />
+                      {errors.min_amount && <span className="text-red-500 text-xs">{errors.min_amount}</span>}
                     </div>
-                    <div className="flex justify-end space-x-2 mt-4">
-                      {/* <Button variant="outline" onClick={resetDeviceForm}>
-                        {editingDeviceId ? "Отмена" : "Очистить"}
-                      </Button> */}
-                      <Button onClick={handleDeviceSave}>
-                        {editingDeviceId ? "Обновить" : "Добавить устройство"}
-                      </Button>
+                    <div className="space-y-2">
+                      <Label>Макс сумма сделки</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="1000000" 
+                        min="0"
+                        value={formData.max_amount} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("max_amount", value);
+                          }
+                        }}
+                        className={errors.max_amount ? "border-red-500" : ""}
+                      />
+                      {errors.max_amount && <span className="text-red-500 text-xs">{errors.max_amount}</span>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Сумма (день)</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="1000000" 
+                        min="0"
+                        value={formData.max_amount_day} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("max_amount_day", value);
+                          }
+                        }}
+                        className={errors.max_amount_day ? "border-red-500" : ""}
+                      />
+                      {errors.max_amount_day && <span className="text-red-500 text-xs">{errors.max_amount_day}</span>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Сумма (месяц)</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="30000000" 
+                        min="0"
+                        value={formData.max_amount_month} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("max_amount_month", value);
+                          }
+                        }}
+                        className={errors.max_amount_month ? "border-red-500" : ""}
+                      />
+                      {errors.max_amount_month && <span className="text-red-500 text-xs">{errors.max_amount_month}</span>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Макс кол-во сделок (день)</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="10" 
+                        min="1"
+                        value={formData.max_quantity_day} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("max_quantity_day", value);
+                          }
+                        }}
+                        className={errors.max_quantity_day ? "border-red-500" : ""}
+                      />
+                      {errors.max_quantity_day && <span className="text-red-500 text-xs">{errors.max_quantity_day}</span>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Макс кол-во сделок (месяц)</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="300" 
+                        min="1"
+                        value={formData.max_quantity_month} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("max_quantity_month", value);
+                          }
+                        }}
+                        className={errors.max_quantity_month ? "border-red-500" : ""}
+                      />
+                      {errors.max_quantity_month && <span className="text-red-500 text-xs">{errors.max_quantity_month}</span>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Сделок одновременно</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="2" 
+                        min="1"
+                        value={formData.max_orders_simultaneosly} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("max_orders_simultaneosly", value);
+                          }
+                        }}
+                        className={errors.max_orders_simultaneosly ? "border-red-500" : ""}
+                      />
+                      {errors.max_orders_simultaneosly && <span className="text-red-500 text-xs">{errors.max_orders_simultaneosly}</span>}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Задержка между сделками (мин)</Label>
+                      <Input 
+                        type="number" 
+                        placeholder="5" 
+                        min="0"
+                        value={formData.delay} 
+                        onChange={e => {
+                          const value = e.target.value;
+                          if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                            handleInputChange("delay", value);
+                          }
+                        }}
+                        className={errors.delay ? "border-red-500" : ""}
+                      />
+                      {errors.delay && <span className="text-red-500 text-xs">{errors.delay}</span>}
                     </div>
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
-          </Dialog>
-          
-          {/* QR Code Dialog */}
-          <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>QR-код для привязки устройства</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="text-center">
-                  <div className="bg-muted rounded-lg p-8 mb-4">
-                    {currentQrDevice && getJwtToken() ? (
-                      <>
-                        {/* Генерация QR-кода с данными {token: jwt, group_id: device_id} */}
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateQrData())}`}
-                          alt="QR код для привязки устройства"
-                          className="h-32 w-32 mx-auto border rounded"
-                        />
-                        <div className="mt-4 space-y-2">
-                          <p className="text-sm font-medium">QR-код для: {currentQrDevice.deviceName}</p>
-                          <div className="bg-background border rounded p-2">
-                            <p className="text-xs font-mono break-all">
-                              {generateQrData()}
-                            </p>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Данные для привязки устройства
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="py-8 text-center">
-                        <p className="text-muted-foreground">Не удалось сгенерировать QR-код</p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {!getJwtToken() ? "Токен не найден" : "Устройство не выбрано"}
-                        </p>
-                      </div>
-                    )}
+
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-4">Устройства</h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="device">Привязанное устройство</Label>
+                    <Select 
+                      value={formData.device_id} 
+                      onValueChange={value => handleInputChange("device_id", value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите устройство (необязательно)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unattached">Не привязано</SelectItem>
+                        {devices.map(device => (
+                          <SelectItem key={device.deviceId} value={device.deviceId}>
+                            {device.deviceName} ({device.enabled ? "Активно" : "Неактивно"})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Привяжите устройство для дополнительной безопасности операций
+                    </p>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    Отсканируйте этот QR-код с помощью мобильного приложения для привязки устройства к аккаунту.
-                  </p>
                 </div>
-                <div className="flex justify-end">
-                  <Button onClick={() => setQrDialogOpen(false)}>
-                    Закрыть
+
+                <div className="flex items-center space-x-2 pt-4 border-t">
+                  <Switch 
+                    id="enabled" 
+                    checked={formData.enabled} 
+                    onCheckedChange={value => handleInputChange("enabled", value)} 
+                  />
+                  <Label htmlFor="enabled">Активность</Label>
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button variant="outline" onClick={() => {
+                    setDialogOpen(false);
+                    resetForm();
+                  }}>
+                    Отмена
+                  </Button>
+                  <Button onClick={handleSave} disabled={formLoading}>
+                    {formLoading ? "Сохранение..." : (editingId ? "Обновить" : "Сохранить")}
                   </Button>
                 </div>
               </div>
             </DialogContent>
           </Dialog>
-        </div>
-        
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          if (open) {
-            resetForm();
-            setDialogOpen(true);
-          } else {
-            setDialogOpen(false);
-            resetForm();
-          }
-        }}>
-          <DialogTrigger asChild>
-            <div></div>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingId ? "Редактировать реквизит" : "Добавить новый реквизит"}</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="currency">Валюта*</Label>
-                  <Select 
-                    value={formData.currency} 
-                    onValueChange={value => handleInputChange("currency", value)}
-                  >
-                    <SelectTrigger className={errors.currency ? "border-red-500" : ""}>
-                      <SelectValue placeholder="Выберите валюту" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="RUB">RUB</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.currency && <span className="text-red-500 text-xs">{errors.currency}</span>}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="payment_system">Способ оплаты*</Label>
-                  <Select 
-                    value={formData.payment_system} 
-                    onValueChange={value => {
-                      handleInputChange("payment_system", value);
-                      // Clear phone/card when changing payment method
-                      handleInputChange("phone", "");
-                      handleInputChange("card_number", "");
-                    }}
-                  >
-                    <SelectTrigger className={errors.payment_system ? "border-red-500" : ""}>
-                      <SelectValue placeholder="Выберите способ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="SBP">СБП</SelectItem>
-                      <SelectItem value="C2C">Карта (C2C)</SelectItem>
-                      <SelectItem value="SBP_TRANSGRAN">СБП Трансгран</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.payment_system && <span className="text-red-500 text-xs">{errors.payment_system}</span>}
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="bank_name">Банк*</Label>
-                  <Select 
-                    value={formData.bank_code} 
-                    onValueChange={handleBankChange}
-                    disabled={banksLoading || banks.length === 0}
-                  >
-                    <SelectTrigger className={errors.bank_code ? "border-red-500" : ""}>
-                      <SelectValue placeholder={banksLoading ? "Загрузка банков..." : "Выберите банк"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {banksLoading ? (
-                        <SelectItem value="loading" disabled>Загрузка банков...</SelectItem>
-                      ) : banksError ? (
-                        <SelectItem value="error" disabled>{banksError}</SelectItem>
+
+          {/* Диалог управления устройствами */}
+          <Dialog open={devicesDialogOpen} onOpenChange={(open) => {
+            if (!open) {
+              resetDeviceForm();
+              setDevicesDialogOpen(false);
+            } else {
+              setDevicesDialogOpen(true);
+            }
+          }}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Monitor className="mr-2 h-4 w-4" />
+                Устройства
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Управление устройствами</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                {/* Devices Table */}
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                         <TableRow>
+                           <TableHead>ID</TableHead>
+                           <TableHead>Имя</TableHead>
+                           <TableHead>Статус</TableHead>
+                           <TableHead>Действия</TableHead>
+                         </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {devices.length === 0 ? (
+                        <TableRow>
+                           <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                             Нет добавленных устройств
+                           </TableCell>
+                        </TableRow>
                       ) : (
-                        banks.map(bank => (
-                          <SelectItem key={bank.code} value={bank.code}>
-                            {bank.name}
-                          </SelectItem>
+                        devices.map(device => (
+                          <TableRow key={device.deviceId}>
+                            <TableCell className="font-mono text-sm">#{device.deviceId}</TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {device.enabled ? 
+                                  <Smartphone className="h-4 w-4 text-green-500" /> : 
+                                  <Monitor className="h-4 w-4 text-gray-400" />
+                                }
+                                <span>{device.deviceName}</span>
+                              </div>
+                            </TableCell>
+                             <TableCell>
+                               <Badge variant={device.enabled ? "default" : "secondary"}>
+                                 {device.enabled ? "Активно" : "Неактивно"}
+                               </Badge>
+                             </TableCell>
+                             <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => handleShowQrCode(device)}
+                                >
+                                  <QrCode className="h-4 w-4" />
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => handleDeviceEdit(device)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" size="sm">
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Удалить устройство?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Это действие нельзя отменить. Устройство будет удалено из системы.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Отмена</AlertDialogCancel>
+                                      <AlertDialogAction 
+                                        onClick={() => handleDeviceDelete(device.deviceId)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Удалить
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         ))
                       )}
-                    </SelectContent>
-                  </Select>
-                  {errors.bank_name && <span className="text-red-500 text-xs">{errors.bank_name}</span>}
+                    </TableBody>
+                  </Table>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="owner">Имя владельца*</Label>
-                  <Input 
-                    placeholder="Например: Иван И." 
-                    value={formData.owner} 
-                    onChange={e => handleInputChange("owner", e.target.value)}
-                    className={errors.owner ? "border-red-500" : ""}
-                  />
-                  {errors.owner && <span className="text-red-500 text-xs">{errors.owner}</span>}
-                </div>
-              </div>
 
-              {/* Conditional phone/card field */}
-              {formData.payment_system === "C2C" ? (
-                  <div className="space-y-2">
-                  <Label htmlFor="card_number">Номер карты*</Label>
-                  <Input 
-                    placeholder="0000 0000 0000 0000" 
-                    value={formData.card_number} 
-                    onChange={e => {
-                      // Убираем все нецифровые символы
-                      const value = e.target.value.replace(/\D/g, '');
-
-                      // Ограничиваем длину (16 цифр)
-                      if (value.length <= 16) {
-                        // Форматируем номер для отображения (группы по 4 цифры)
-                        const formattedValue = value.replace(/(\d{4})/g, '$1 ').trim();
-                        handleInputChange("card_number", formattedValue);
-                      }
-                    }}
-                    className={errors.card_number ? "border-red-500" : ""}
-                    maxLength={19} // 16 цифр + 3 пробела
-                  />
-                  {errors.card_number && <span className="text-red-500 text-xs">{errors.card_number}</span>}
-                </div>
-              ) : formData.payment_system === "SBP" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Телефон*</Label>
-                  <Input 
-                    placeholder="+7 (123) 456-78-90" 
-                    value={formData.phone} 
-                    onChange={e => {
-                      // Разрешаем ввод только цифр и знака +
-                      let value = e.target.value.replace(/[^\d+]/g, '');
-                      
-                      // Ограничиваем длину
-                      if (value.length > 12) {
-                        value = value.substring(0, 12);
-                      }
-                      
-                      // Форматируем номер для отображения
-                      let formattedValue = value;
-                      if (value.startsWith('+7') && value.length > 2) {
-                        const numbers = value.substring(2).replace(/\D/g, '');
-                        formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
-                      } else if (value.startsWith('8') && value.length > 1) {
-                        const numbers = value.substring(1).replace(/\D/g, '');
-                        formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
-                      }
-                      
-                      handleInputChange("phone", formattedValue);
-                    }}
-                    className={errors.phone ? "border-red-500" : ""}
-                    maxLength={18}
-                  />
-                  {errors.phone && <span className="text-red-500 text-xs">{errors.phone}</span>}
-                </div>
-              ) : formData.payment_system === "SBP_TRANSGRAN" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Телефон*</Label>
-                  <Input 
-                    placeholder="+992 99 123-45-67" 
-                    value={formData.phone} 
-                    onChange={e => {
-                      // Разрешаем ввод только цифр и знака +
-                      let value = e.target.value.replace(/[^\d+]/g, '');
-                      
-                      // Ограничиваем длину
-                      if (value.length > 12) {
-                        value = value.substring(0, 12);
-                      }
-                      
-                      // Форматируем номер для отображения
-                      // let formattedValue = value;
-                      // if (value.startsWith('+7') && value.length > 2) {
-                      //   const numbers = value.substring(2).replace(/\D/g, '');
-                      //   formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
-                      // } else if (value.startsWith('8') && value.length > 1) {
-                      //   const numbers = value.substring(1).replace(/\D/g, '');
-                      //   formattedValue = `+7 (${numbers.substring(0, 3)}) ${numbers.substring(3, 6)}-${numbers.substring(6, 8)}-${numbers.substring(8, 10)}`;
-                      // }
-                      
-                      handleInputChange("phone", value);
-                    }}
-                    className={errors.phone ? "border-red-500" : ""}
-                    maxLength={18}
-                  />
-                  {errors.phone && <span className="text-red-500 text-xs">{errors.phone}</span>}
-                </div>
-              ) : null}
-
-              <div className="border-t pt-4">
-                <h4 className="font-medium mb-4">Лимиты</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Мин сумма сделки</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="0" 
-                      min="0"
-                      value={formData.min_amount} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("min_amount", value);
-                        }
-                      }}
-                      className={errors.min_amount ? "border-red-500" : ""}
-                    />
-                    {errors.min_amount && <span className="text-red-500 text-xs">{errors.min_amount}</span>}
+                {/* Add Device Form */}
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-4">
+                    {editingDeviceId ? "Редактировать устройство" : "Добавить новое устройство"}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="deviceName">Название устройства*</Label>
+                      <Input 
+                        id="deviceName"
+                        placeholder="Например: Рабочий компьютер" 
+                        value={deviceFormData.name} 
+                        onChange={e => handleDeviceInputChange("name", e.target.value)}
+                        className={deviceErrors.name ? "border-red-500" : ""}
+                      />
+                      {deviceErrors.name && <span className="text-red-500 text-xs">{deviceErrors.name}</span>}
+                     </div>
+                     <div className="space-y-2">
+                      <Label htmlFor="deviceStatus">Статус</Label>
+                      <Select 
+                        value={deviceFormData.status} 
+                        onValueChange={value => handleDeviceInputChange("status", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите статус" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="active">Активно</SelectItem>
+                          <SelectItem value="inactive">Неактивно</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Макс сумма сделки</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="1000000" 
-                      min="0"
-                      value={formData.max_amount} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("max_amount", value);
-                        }
-                      }}
-                      className={errors.max_amount ? "border-red-500" : ""}
-                    />
-                    {errors.max_amount && <span className="text-red-500 text-xs">{errors.max_amount}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Сумма (день)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="1000000" 
-                      min="0"
-                      value={formData.max_amount_day} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("max_amount_day", value);
-                        }
-                      }}
-                      className={errors.max_amount_day ? "border-red-500" : ""}
-                    />
-                    {errors.max_amount_day && <span className="text-red-500 text-xs">{errors.max_amount_day}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Сумма (месяц)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="30000000" 
-                      min="0"
-                      value={formData.max_amount_month} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("max_amount_month", value);
-                        }
-                      }}
-                      className={errors.max_amount_month ? "border-red-500" : ""}
-                    />
-                    {errors.max_amount_month && <span className="text-red-500 text-xs">{errors.max_amount_month}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Макс кол-во сделок (день)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="10" 
-                      min="1"
-                      value={formData.max_quantity_day} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("max_quantity_day", value);
-                        }
-                      }}
-                      className={errors.max_quantity_day ? "border-red-500" : ""}
-                    />
-                    {errors.max_quantity_day && <span className="text-red-500 text-xs">{errors.max_quantity_day}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Макс кол-во сделок (месяц)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="300" 
-                      min="1"
-                      value={formData.max_quantity_month} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("max_quantity_month", value);
-                        }
-                      }}
-                      className={errors.max_quantity_month ? "border-red-500" : ""}
-                    />
-                    {errors.max_quantity_month && <span className="text-red-500 text-xs">{errors.max_quantity_month}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Сделок одновременно</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="2" 
-                      min="1"
-                      value={formData.max_orders_simultaneosly} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("max_orders_simultaneosly", value);
-                        }
-                      }}
-                      className={errors.max_orders_simultaneosly ? "border-red-500" : ""}
-                    />
-                    {errors.max_orders_simultaneosly && <span className="text-red-500 text-xs">{errors.max_orders_simultaneosly}</span>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Задержка между сделками (мин)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="5" 
-                      min="0"
-                      value={formData.delay} 
-                      onChange={e => {
-                        const value = e.target.value;
-                        // Разрешаем только положительные числа
-                        if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
-                          handleInputChange("delay", value);
-                        }
-                      }}
-                      className={errors.delay ? "border-red-500" : ""}
-                    />
-                    {errors.delay && <span className="text-red-500 text-xs">{errors.delay}</span>}
+                  <div className="flex justify-end space-x-2 mt-4">
+                    <Button onClick={handleDeviceSave}>
+                      {editingDeviceId ? "Обновить" : "Добавить устройство"}
+                    </Button>
                   </div>
                 </div>
               </div>
-
-              <div className="border-t pt-4">
-                <h4 className="font-medium mb-4">Устройства</h4>
-                <div className="space-y-2">
-                  <Label htmlFor="device">Привязанное устройство</Label>
-                  <Select 
-                    value={formData.device_id} 
-                    onValueChange={value => handleInputChange("device_id", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Выберите устройство (необязательно)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unattached">Не привязано</SelectItem>
-                      {devices.map(device => (
-                        <SelectItem key={device.deviceId} value={device.deviceId}>
-                          {device.deviceName} ({device.enabled ? "Активно" : "Неактивно"})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Привяжите устройство для дополнительной безопасности операций
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2 pt-4 border-t">
-                <Switch 
-                  id="enabled" 
-                  checked={formData.enabled} 
-                  onCheckedChange={value => handleInputChange("enabled", value)} 
-                />
-                <Label htmlFor="enabled">Активность</Label>
-              </div>
-
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button variant="outline" onClick={() => {
-                  setDialogOpen(false);
-                  resetForm();
-                }}>
-                  Отмена
-                </Button>
-                <Button onClick={handleSave} disabled={formLoading}>
-                  {formLoading ? "Сохранение..." : (editingId ? "Обновить" : "Сохранить")}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
+
+      {/* QR Code Dialog */}
+      <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>QR-код для привязки устройства</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-center">
+              <div className="bg-muted rounded-lg p-8 mb-4">
+                {currentQrDevice && getJwtToken() ? (
+                  <>
+                    <img 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateQrData())}`}
+                      alt="QR код для привязки устройства"
+                      className="h-32 w-32 mx-auto border rounded"
+                    />
+                    <div className="mt-4 space-y-2">
+                      <p className="text-sm font-medium">QR-код для: {currentQrDevice.deviceName}</p>
+                      <div className="bg-background border rounded p-2">
+                        <p className="text-xs font-mono break-all">
+                          {generateQrData()}
+                        </p>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Данные для привязки устройства
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="py-8 text-center">
+                    <p className="text-muted-foreground">Не удалось сгенерировать QR-код</p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {!getJwtToken() ? "Токен не найден" : "Устройство не выбрано"}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Отсканируйте этот QR-код с помощью мобильного приложения для привязки устройства к аккаунту.
+              </p>
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={() => setQrDialogOpen(false)}>
+                Закрыть
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Filters */}
       <div className="bg-card rounded-lg border p-4">
@@ -1229,6 +1248,7 @@ export default function PaymentDetails() {
               <SelectContent>
                 <SelectItem value="all">Все валюты</SelectItem>
                 <SelectItem value="RUB">RUB</SelectItem>
+                <SelectItem value="tjs">TJS</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1246,26 +1266,10 @@ export default function PaymentDetails() {
                 <SelectItem value="all">Все способы</SelectItem>
                 <SelectItem value="SBP">СБП</SelectItem>
                 <SelectItem value="C2C">Карта</SelectItem>
+                <SelectItem value="SPB">СБП Трансгран</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          
-          {/* <div className="space-y-2">
-            <Label>Тип оплаты</Label>
-            <Select 
-              value={filters.paymentType} 
-              onValueChange={(value) => handleFilterChange("paymentType", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Все типы" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все типы</SelectItem>
-                <SelectItem value="digital">СБП</SelectItem>
-                <SelectItem value="card">C2C</SelectItem>
-              </SelectContent>
-            </Select>
-          </div> */}
           
           <div className="space-y-2">
             <Label>Статус</Label>
@@ -1344,21 +1348,24 @@ export default function PaymentDetails() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className="text-xs">
-                            {detail.payment_system === "SBP" ? "СБП" : "Карта"}
+                            {detail.payment_system === "SBP" || detail.payment_system === "SPB" ? "СБП" : "Карта"}
+                            {detail.currency === "tjs" && " Трансгран"}
                           </Badge>
-                          <Badge variant="secondary" className="text-xs">{detail.currency}</Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            {detail.currency === "tjs" ? "TJS" : detail.currency}
+                          </Badge>
                         </div>
                         <div className="flex items-center gap-1 text-sm">
                           <Building className="h-3 w-3 text-muted-foreground" />
                           <span className="text-xs">{detail.bank_name}</span>
                         </div>
-                        {detail.phone && detail.payment_system === "SBP" && (
+                        {detail.phone && (detail.payment_system === "SBP" || detail.payment_system === "SPB") && (
                           <div className="flex items-center gap-1 text-sm">
                             <Phone className="h-3 w-3 text-muted-foreground" />
                             <span className="text-xs">{formatPhoneNumber(detail.phone)}</span>
                           </div>
                         )}
-                        {detail.card_number && detail.payment_system === "C2C" && (
+                        {detail.card_number && (detail.payment_system === "C2C") && (
                           <div className="flex items-center gap-1 text-sm">
                             <CreditCardIcon className="h-3 w-3 text-muted-foreground" />
                             <span className="text-xs">{formatCardNumber(detail.card_number)}</span>
@@ -1372,10 +1379,10 @@ export default function PaymentDetails() {
                     <TableCell>
                       <div className="space-y-1 text-xs">
                         <div className="text-muted-foreground">
-                          от {detail.min_amount.toLocaleString()} {detail.currency}
+                          от {detail.min_amount.toLocaleString()} {detail.currency === "tjs" ? "RUB" : detail.currency}
                         </div>
                         <div className="text-muted-foreground">
-                          до {detail.max_amount.toLocaleString()} {detail.currency}
+                          до {detail.max_amount.toLocaleString()} {detail.currency === "tjs" ? "RUB" : detail.currency}
                         </div>
                       </div>
                     </TableCell>
