@@ -11,8 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { TrendingUp, Loader2, Copy, CheckCheck, Settings, Plus, Trash2, Users, User, ChevronsUpDown, Search, Lock, Unlock } from "lucide-react";
+import { TrendingUp, Loader2, Copy, CheckCheck, Settings, Plus, Trash2, Users, User, ChevronsUpDown, Search } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import apiClient from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -32,13 +31,6 @@ interface TrafficRecord {
   trader_priority: number;
   platform_fee: number;
   enabled: boolean;
-  // Новые поля для блокировок
-  traffic_activity_params?: {
-    merchant_unlocked: boolean;
-    trader_unlocked: boolean;
-    antifraud_unlocked: boolean;
-    manually_unlocked: boolean;
-  };
 }
 
 interface MerchantTraffic {
@@ -47,22 +39,12 @@ interface MerchantTraffic {
   enabled: boolean;
   connections_count: number;
   connected_traders: User[];
-  // Новые поля для блокировок
-  merchant_unlocked: boolean;
 }
 
 interface TraderTraffic {
   trader: User;
   enabled: boolean;
   connections: TrafficRecord[];
-  // Новые поля для блокировок
-  manually_unlocked: boolean;
-  lock_statuses: {
-    merchant_unlocked: boolean;
-    trader_unlocked: boolean;
-    antifraud_unlocked: boolean;
-    manually_unlocked: boolean;
-  };
 }
 
 interface MerchantSettingsForm {
@@ -92,15 +74,6 @@ interface SingleConnectionForm {
   enabled: boolean;
 }
 
-interface CreateTrafficForm {
-  merchant_id: string;
-  trader_id: string;
-  trader_reward: string;
-  trader_priority: string;
-  platform_fee: string;
-  enabled: boolean;
-}
-
 const PRIORITY_OPTIONS = [
   { label: "Обычный", value: "1" },
   { label: "Средний", value: "5" },
@@ -110,13 +83,16 @@ const PRIORITY_OPTIONS = [
 
 // Функция для валидации ввода процентов
 const validatePercentageInput = (value: string): string => {
+  // Разрешаем только цифры и точку, не более одной точки
   const cleanedValue = value.replace(/[^\d.]/g, '');
   const parts = cleanedValue.split('.');
   
   if (parts.length > 2) {
+    // Если больше одной точки, оставляем только первую часть и точку с второй частью
     return parts[0] + '.' + parts.slice(1).join('');
   }
   
+  // Ограничиваем до 3 знаков после запятой
   if (parts.length === 2 && parts[1].length > 3) {
     return parts[0] + '.' + parts[1].substring(0, 3);
   }
@@ -155,12 +131,10 @@ export default function TrafficTab() {
     connections: []
   });
 
-  const [newConnectionForm, setNewConnectionForm] = useState<CreateTrafficForm>({
+  const [newConnectionForm, setNewConnectionForm] = useState<TraderConnectionForm>({
     merchant_id: "",
-    trader_id: "",
     trader_reward: "",
     trader_priority: "1",
-    platform_fee: "",
     enabled: true
   });
 
@@ -222,18 +196,12 @@ export default function TrafficTab() {
       return trader!;
     }).filter(trader => trader !== undefined);
 
-    // Новое поле для блокировки мерчанта
-    const merchant_unlocked = merchantRecords.some(record => 
-      record.traffic_activity_params?.merchant_unlocked ?? true
-    );
-
     return {
       merchant,
       platform_fee: platformFee,
       enabled,
       connections_count,
-      connected_traders: connectedTraders,
-      merchant_unlocked
+      connected_traders: connectedTraders
     };
   });
 
@@ -242,32 +210,10 @@ export default function TrafficTab() {
     const connections = trafficRecords.filter(record => record.trader_id === trader.id);
     const enabled = connections.some(connection => connection.enabled);
 
-    // Новые поля для блокировок трейдера
-    const manually_unlocked = connections.some(connection => 
-      connection.traffic_activity_params?.manually_unlocked ?? true
-    );
-
-    const lock_statuses = {
-      merchant_unlocked: connections.some(connection => 
-        connection.traffic_activity_params?.merchant_unlocked ?? true
-      ),
-      trader_unlocked: connections.some(connection => 
-        connection.traffic_activity_params?.trader_unlocked ?? true
-      ),
-      antifraud_unlocked: connections.some(connection => 
-        connection.traffic_activity_params?.antifraud_unlocked ?? true
-      ),
-      manually_unlocked: connections.some(connection => 
-        connection.traffic_activity_params?.manually_unlocked ?? true
-      )
-    };
-
     return {
       trader,
       enabled,
-      connections,
-      manually_unlocked,
-      lock_statuses
+      connections
     };
   });
 
@@ -314,31 +260,7 @@ export default function TrafficTab() {
     );
   };
 
-  // Компонент для отображения статусов блокировок
-  const LockStatusBadge = ({ unlocked, tooltip }: { unlocked: boolean; tooltip: string }) => {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <Badge 
-              variant={unlocked ? "default" : "secondary"} 
-              className={cn(
-                "cursor-help",
-                unlocked ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-              )}
-            >
-              {unlocked ? <Unlock className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
-            </Badge>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    );
-  };
-
-  // Merchant actions - используем стабильный подход
+  // Merchant actions
   const handleMerchantToggle = async (merchantTraffic: MerchantTraffic) => {
     setActionLoading(`merchant-toggle-${merchantTraffic.merchant.id}`);
     try {
@@ -366,33 +288,6 @@ export default function TrafficTab() {
       toast({
         title: "Ошибка обновления",
         description: err.response?.data?.message || "Не удалось обновить статус трафика",
-        variant: "destructive"
-      });
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Новая функция для переключения блокировки мерчанта
-  const handleMerchantLockToggle = async (merchantTraffic: MerchantTraffic) => {
-    const newUnlockedStatus = !merchantTraffic.merchant_unlocked;
-    
-    setActionLoading(`merchant-lock-${merchantTraffic.merchant.id}`);
-    try {
-      // Используем новый эндпоинт для блокировки
-      await apiClient.patch(`/traffic/merchants/${merchantTraffic.merchant.id}?unlocked=${newUnlockedStatus}`);
-      
-      toast({
-        title: "Блокировка обновлена",
-        description: `Блокировка мерчанта ${merchantTraffic.merchant.username} ${newUnlockedStatus ? 'снята' : 'установлена'}`,
-      });
-      
-      fetchData();
-    } catch (err: any) {
-      console.error("Ошибка при обновлении блокировки мерчанта:", err);
-      toast({
-        title: "Ошибка обновления",
-        description: err.response?.data?.message || "Не удалось обновить блокировку",
         variant: "destructive"
       });
     } finally {
@@ -482,7 +377,7 @@ export default function TrafficTab() {
     }
   };
 
-  // Trader actions - используем стабильный подход
+  // Trader actions
   const handleTraderToggle = async (traderTraffic: TraderTraffic) => {
     setActionLoading(`trader-toggle-${traderTraffic.trader.id}`);
     try {
@@ -508,37 +403,6 @@ export default function TrafficTab() {
       toast({
         title: "Ошибка обновления",
         description: err.response?.data?.message || "Не удалось обновить статус трафика",
-        variant: "destructive"
-      });
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  // Новая функция для переключения ручной блокировки трейдера
-  const handleTraderLockToggle = async (traderTraffic: TraderTraffic) => {
-    const newUnlockedStatus = !traderTraffic.manually_unlocked;
-    
-    setActionLoading(`trader-lock-${traderTraffic.trader.id}`);
-    try {
-      // Для каждого подключения трейдера устанавливаем manually_unlocked
-      const updatePromises = traderTraffic.connections.map(connection => {
-        return apiClient.patch(`/traffic/${connection.id}/manual?unlocked=${newUnlockedStatus}`);
-      });
-
-      await Promise.all(updatePromises);
-      
-      toast({
-        title: "Блокировка обновлена",
-        description: `Ручная блокировка для трейдера ${traderTraffic.trader.username} ${newUnlockedStatus ? 'снята' : 'установлена'}`,
-      });
-      
-      fetchData();
-    } catch (err: any) {
-      console.error("Ошибка при обновлении блокировки трейдера:", err);
-      toast({
-        title: "Ошибка обновления",
-        description: err.response?.data?.message || "Не удалось обновить блокировку",
         variant: "destructive"
       });
     } finally {
@@ -659,10 +523,8 @@ export default function TrafficTab() {
   const openAddConnectionModal = (trader_id: string) => {
     setNewConnectionForm({
       merchant_id: "",
-      trader_id: trader_id,
       trader_reward: "",
       trader_priority: "1",
-      platform_fee: "",
       enabled: true
     });
     setAddConnectionModal({ open: true, trader_id });
@@ -909,6 +771,16 @@ export default function TrafficTab() {
     return merchants.filter(merchant => !connectedMerchantIds.includes(merchant.id));
   };
 
+  // Функция для поиска трейдера в выпадающем списке
+  const filterTraders = (merchantId: string, searchTerm: string) => {
+    const connectedTraders = merchantTraffic.find(m => m.merchant.id === merchantId)?.connected_traders || [];
+    return connectedTraders.filter(trader => 
+      trader.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      trader.login.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      trader.id.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -922,10 +794,6 @@ export default function TrafficTab() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-foreground">Управление трафиком</h1>
-        <Button onClick={fetchData} variant="outline" disabled={loading}>
-          <Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Обновить
-        </Button>
       </div>
 
       {/* Merchants Section */}
@@ -948,8 +816,7 @@ export default function TrafficTab() {
                   <TableHead>Мерчант</TableHead>
                   <TableHead>Комиссия платформы</TableHead>
                   <TableHead>Подключения</TableHead>
-                  <TableHead>Статус трафика</TableHead>
-                  <TableHead>Блокировка</TableHead>
+                  <TableHead>Статус</TableHead>
                   <TableHead>Действия</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1013,37 +880,17 @@ export default function TrafficTab() {
                       </Popover>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={merchant.enabled ? "default" : "secondary"}>
-                          {merchant.enabled ? "Активен" : "Неактивен"}
-                        </Badge>
+                      <Badge variant={merchant.enabled ? "default" : "secondary"}>
+                        {merchant.enabled ? "Активен" : "Неактивен"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
                         <Switch
                           checked={merchant.enabled}
                           onCheckedChange={() => handleMerchantToggle(merchant)}
                           disabled={actionLoading === `merchant-toggle-${merchant.merchant.id}`}
                         />
-                        {actionLoading === `merchant-toggle-${merchant.merchant.id}` && (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={merchant.merchant_unlocked ? "default" : "secondary"}>
-                          {merchant.merchant_unlocked ? "Разблокирован" : "Заблокирован"}
-                        </Badge>
-                        <Switch
-                          checked={merchant.merchant_unlocked}
-                          onCheckedChange={() => handleMerchantLockToggle(merchant)}
-                          disabled={actionLoading === `merchant-lock-${merchant.merchant.id}`}
-                        />
-                        {actionLoading === `merchant-lock-${merchant.merchant.id}` && (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1088,9 +935,7 @@ export default function TrafficTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Трейдер</TableHead>
-                  <TableHead>Статус трафика</TableHead>
-                  <TableHead>Ручная блокировка</TableHead>
-                  <TableHead>Статусы блокировок</TableHead>
+                  <TableHead>Статус</TableHead>
                   <TableHead>Действия</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1099,59 +944,17 @@ export default function TrafficTab() {
                   <TableRow key={trader.trader.id}>
                     <TableCell>{renderUserInfo(trader.trader)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={trader.enabled ? "default" : "secondary"}>
-                          {trader.enabled ? "Активен" : "Неактивен"}
-                        </Badge>
+                      <Badge variant={trader.enabled ? "default" : "secondary"}>
+                        {trader.enabled ? "Активен" : "Неактивен"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
                         <Switch
                           checked={trader.enabled}
                           onCheckedChange={() => handleTraderToggle(trader)}
                           disabled={actionLoading === `trader-toggle-${trader.trader.id}`}
                         />
-                        {actionLoading === `trader-toggle-${trader.trader.id}` && (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={trader.manually_unlocked ? "default" : "secondary"}>
-                          {trader.manually_unlocked ? "Разблокирован" : "Заблокирован"}
-                        </Badge>
-                        <Switch
-                          checked={trader.manually_unlocked}
-                          onCheckedChange={() => handleTraderLockToggle(trader)}
-                          disabled={actionLoading === `trader-lock-${trader.trader.id}`}
-                        />
-                        {actionLoading === `trader-lock-${trader.trader.id}` && (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <TooltipProvider>
-                        <div className="flex gap-2">
-                          <LockStatusBadge 
-                            unlocked={trader.lock_statuses.merchant_unlocked}
-                            tooltip="Блокировка мерчанта"
-                          />
-                          <LockStatusBadge 
-                            unlocked={trader.lock_statuses.trader_unlocked}
-                            tooltip="Блокировка трейдера"
-                          />
-                          <LockStatusBadge 
-                            unlocked={trader.lock_statuses.antifraud_unlocked}
-                            tooltip="Блокировка антифрода"
-                          />
-                          <LockStatusBadge 
-                            unlocked={trader.lock_statuses.manually_unlocked}
-                            tooltip="Ручная блокировка"
-                          />
-                        </div>
-                      </TooltipProvider>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1178,7 +981,6 @@ export default function TrafficTab() {
         </CardContent>
       </Card>
 
-      {/* Остальные модальные окна остаются без изменений от stable версии */}
       {/* Merchant Settings Modal */}
       <Dialog open={merchantSettingsModal.open} onOpenChange={(open) => setMerchantSettingsModal({ open, merchant: null })}>
         <DialogContent>
@@ -1363,8 +1165,6 @@ export default function TrafficTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Остальные модальные окна (Single Connection, Add Connection, Delete Dialogs) */}
-      {/* Они остаются точно такими же как в stable версии */}
       {/* Single Connection Modal */}
       <Dialog open={singleConnectionModal.open} onOpenChange={(open) => setSingleConnectionModal({ open, connection: null })}>
         <DialogContent>
