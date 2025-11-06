@@ -1,16 +1,17 @@
-// src/hooks/useBankDetails.ts
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { bankService, BankDetail, BankDetailStats } from "@/services/bankService";
-import { deviceService, Device } from "@/services/deviceService";
+import { deviceService } from "@/services/deviceService";
+
 
 export const useBankDetails = () => {
   const { userID } = useAuth();
   const [bankDetails, setBankDetails] = useState<BankDetail[]>([]);
   const [stats, setStats] = useState<BankDetailStats[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
+  const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
 
   const fetchData = useCallback(async () => {
     if (!userID) return;
@@ -22,7 +23,7 @@ export const useBankDetails = () => {
       const [detailsData, statsData, devicesData] = await Promise.all([
         bankService.getTraderBankDetails(userID),
         bankService.getBankDetailsStats(userID),
-        deviceService.getUserDevices(userID)
+        deviceService.getTraderDevices(userID)  // ← ИСПРАВЛЕНО с getUserDevices
       ]);
       
       setBankDetails(detailsData);
@@ -36,12 +37,13 @@ export const useBankDetails = () => {
     }
   }, [userID]);
 
+
   // Функция для загрузки только устройств
   const fetchDevices = useCallback(async () => {
     if (!userID) return;
     
     try {
-      const devicesData = await deviceService.getUserDevices(userID);
+      const devicesData = await deviceService.getTraderDevices(userID);  // ← ИСПРАВЛЕНО
       setDevices(devicesData);
     } catch (err: any) {
       console.error("Ошибка при загрузке устройств:", err);
@@ -49,9 +51,11 @@ export const useBankDetails = () => {
     }
   }, [userID]);
 
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
 
   // Функция для добавления устройства
   const addDevice = async (deviceData: {
@@ -61,10 +65,8 @@ export const useBankDetails = () => {
     if (!userID) return;
     
     try {
-      await deviceService.createDevice({
-        ...deviceData,
-        traderId: userID
-      });
+      // ← ИСПРАВЛЕНО: передаем правильные параметры
+      await deviceService.createDevice(userID, deviceData.deviceName);
       
       // После успешного создания, загружаем актуальный список устройств
       await fetchDevices();
@@ -73,6 +75,7 @@ export const useBankDetails = () => {
       throw error;
     }
   };
+
 
   // Функция для обновления устройства
   const updateDevice = async (
@@ -83,7 +86,16 @@ export const useBankDetails = () => {
     }
   ) => {
     try {
-      await deviceService.updateDevice(deviceId, updateData);
+      // ← Преобразуем в правильный формат для API
+      const updatePayload: any = {};
+      if (updateData.deviceName) {
+        updatePayload.device_name = updateData.deviceName;
+      }
+      if (updateData.enabled !== undefined) {
+        updatePayload.enabled = updateData.enabled;
+      }
+      
+      await deviceService.updateDevice(deviceId, updatePayload);
       
       // После успешного обновления, загружаем актуальный список устройств
       await fetchDevices();
@@ -92,6 +104,7 @@ export const useBankDetails = () => {
       throw error;
     }
   };
+
 
   // Функция для удаления устройства
   const deleteDevice = async (deviceId: string) => {
@@ -106,6 +119,7 @@ export const useBankDetails = () => {
     }
   };
 
+
   return {
     bankDetails,
     stats,
@@ -116,6 +130,6 @@ export const useBankDetails = () => {
     addDevice,
     updateDevice,
     deleteDevice,
-    fetchDevices // Добавляем функцию для ручной загрузки устройств
+    fetchDevices
   };
 };
