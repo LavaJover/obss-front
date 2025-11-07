@@ -67,27 +67,34 @@ export const DeviceManager: React.FC<DeviceManagerProps> = ({
   const [addFormOpen, setAddFormOpen] = useState(false); // ← НОВЫЙ STATE
 
   // Загрузка статусов устройств
-  const fetchDevicesStatus = async () => {
+const fetchDevicesStatus = async () => {
     setStatusLoading(true);
     try {
       const statuses: { [key: string]: any } = {};
       
       for (const device of devices) {
         try {
+          console.log(`🔄 Fetching status for device: ${device.deviceId}`);
           const status = await deviceService.getDeviceStatus(device.deviceId);
+          console.log(`📱 Device ${device.deviceId} status:`, status);
+          
           statuses[device.deviceId] = {
             online: status.online,
             lastPing: status.last_ping,
+            rawStatus: status // добавляем для отладки
           };
         } catch (error) {
-          console.error(`Error fetching status for device ${device.deviceId}:`, error);
-          statuses[device.deviceId] = { online: false };
+          console.error(`❌ Error fetching status for device ${device.deviceId}:`, error);
+          statuses[device.deviceId] = { 
+            online: false,
+            error: error.message 
+          };
         }
       }
       
       setDeviceStatuses(statuses);
     } catch (error) {
-      console.error("Error fetching devices status:", error);
+      console.error("❌ Error fetching devices status:", error);
     } finally {
       setStatusLoading(false);
     }
