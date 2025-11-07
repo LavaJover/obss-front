@@ -13,7 +13,8 @@ import {
   BarChart3, 
   CreditCard, 
   ChevronLeft, 
-  ChevronRight 
+  ChevronRight,
+  Bot // Добавляем иконку робота
 } from "lucide-react";
 
 import TrafficTab from "@/components/admin/Traffic";
@@ -26,7 +27,8 @@ import TeamsTab from "@/components/admin/Teams";
 import TraderStatsTab from "@/components/admin/TraderStats";
 import PaymentDetailsTab from "@/components/admin/PaymentDetails";
 import UsersMainTab from "@/components/admin/users/UsersMainTab";
-
+import AutomaticTab from "@/components/admin/AutomaticTab";
+// import AutomaticTab from "@/components/admin/AutomaticTab"; // Новый компонент
 
 export default function Admin() {
   return (
@@ -41,10 +43,14 @@ export default function Admin() {
 
       {/* Admin Tabs */}
       <Tabs defaultValue="traders" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:grid-cols-11 gap-0.5 sm:gap-1 h-auto p-1">
+        <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:grid-cols-12 gap-0.5 sm:gap-1 h-auto p-1">
           <TabsTrigger value="users" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
             <Users className="h-4 w-4 sm:h-3 sm:w-3" />
             <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Пользователи</span>
+          </TabsTrigger>
+          <TabsTrigger value="automatic" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
+            <Bot className="h-4 w-4 sm:h-3 sm:w-3" />
+            <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Автоматика</span>
           </TabsTrigger>
           <TabsTrigger value="traffic" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
             <TrendingUp className="h-4 w-4 sm:h-3 sm:w-3" />
@@ -66,10 +72,6 @@ export default function Admin() {
             <MessageSquare className="h-4 w-4 sm:h-3 sm:w-3" />
             <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Телеграм</span>
           </TabsTrigger>
-          {/* <TabsTrigger value="settle-settings" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
-            <Settings className="h-4 w-4 sm:h-3 sm:w-3" />
-            <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Settle</span>
-          </TabsTrigger> */}
           <TabsTrigger value="teams" className="flex flex-col sm:flex-row items-center gap-1 text-xs px-1 sm:px-3 py-2 min-h-[60px] sm:min-h-[40px]">
             <Command className="h-4 w-4 sm:h-3 sm:w-3" />
             <span className="text-[10px] sm:text-xs sm:hidden lg:inline">Команды</span>
@@ -86,6 +88,10 @@ export default function Admin() {
 
         <TabsContent value="users" className="mt-6">
           <UsersMainTab />
+        </TabsContent>
+
+        <TabsContent value="automatic" className="mt-6">
+          <AutomaticTab />
         </TabsContent>
 
         <TabsContent value="traffic" className="mt-6">
@@ -106,10 +112,6 @@ export default function Admin() {
 
         <TabsContent value="telegram" className="mt-6">
           <TelegramTab />
-        </TabsContent>
-
-        <TabsContent value="settle-settings" className="mt-6">
-          <SettleSettingsTab />
         </TabsContent>
 
         <TabsContent value="teams" className="mt-6">
