@@ -127,8 +127,17 @@ export default function AutomaticTab() {
     loadData();
   };
 
+  const [viewMode, setViewMode] = useState<'trader' | 'all'>('trader');
+
+  // Обновим обработчик
   const handleUserChange = (value: string) => {
-    setSelectedUserId(value);
+    if (value === 'all') {
+      setSelectedUserId('');
+      setViewMode('all');
+    } else {
+      setSelectedUserId(value);
+      setViewMode('trader');
+    }
   };
 
   const clearSelection = () => {
@@ -168,6 +177,7 @@ export default function AutomaticTab() {
                     <SelectValue placeholder={usersLoading ? "Загрузка..." : "Выберите пользователя"} />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">Все трейдеры</SelectItem>
                     {users.map(user => (
                       <SelectItem key={user.id} value={user.id.toString()}>
                         {user.username} ({user.role})
