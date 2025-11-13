@@ -17,22 +17,26 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePermissions } from "@/contexts/PermissionsContext";
+import { useConfig } from "@/contexts/ConfigContext";
+import { DynamicFavicon } from "./DynamicFavicon";
+import { HeaderIcon } from "./HeaderIcon";
 
-const navigation = [
-  { name: "Главная", href: "/", icon: Home },
-  { name: "Сделки", href: "/deals", icon: ArrowRightLeft },
-  { name: "Реквизиты", href: "/payment-details", icon: CreditCard },
-  { name: "История операций", href: "/history", icon: History },
-  { name: "Статистика", href: "/statistics", icon: BarChart3 },
-  { name: "Настройки", href: "/settings", icon: Settings },
+// Навигация теперь создается динамически на основе конфига
+const createNavigation = (config: any) => [
+  { name: config.navigation.home, href: "/", icon: Home },
+  { name: config.navigation.deals, href: "/deals", icon: ArrowRightLeft },
+  { name: config.navigation.paymentDetails, href: "/payment-details", icon: CreditCard },
+  { name: config.navigation.history, href: "/history", icon: History },
+  { name: config.navigation.statistics, href: "/statistics", icon: BarChart3 },
+  { name: config.navigation.settings, href: "/settings", icon: Settings },
 ];
 
-const adminNavigation = [
-  { name: "Админ-панель", href: "/admin", icon: Shield, restricted: true },
+const createAdminNavigation = (config: any) => [
+  { name: config.navigation.adminPanel, href: "/admin", icon: Shield, restricted: true },
 ];
 
-const teamleadNavigation = [
-  { name: "Кабинет тимлида", href: "/team-lead", icon: Crown, restricted: true },
+const createTeamleadNavigation = (config: any) => [
+  { name: config.navigation.teamleadOffice, href: "/team-lead", icon: Crown, restricted: true },
 ]
 
 export function Layout() {
@@ -42,12 +46,30 @@ export function Layout() {
   const { logout } = useAuth();
   const { toast } = useToast();
   const { isAdmin, isTeamLead } = usePermissions();
+  const { config, isLoading } = useConfig();
+
+  // Пока конфиг загружается, показываем заглушку
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Загрузка конфигурации...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Создаем навигацию на основе конфига
+  const navigation = createNavigation(config);
+  const adminNavigation = createAdminNavigation(config);
+  const teamleadNavigation = createTeamleadNavigation(config);
 
   const handleLogout = () => {
     logout();
     toast({
-      title: "Выход выполнен",
-      description: "Вы успешно вышли из системы",
+      title: config.messages.logoutSuccess,
+      description: config.messages.logoutDescription,
     });
     navigate("/login");
   };
@@ -63,13 +85,17 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Динамический favicon и title */}
+      <DynamicFavicon />
+      
       {/* Top Navigation Bar */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
-            {/* Logo */}
-            <div className="flex items-center">
-              <h1 className="text-xl font-bold text-primary">obmenka</h1>
+            {/* Logo с иконкой */}
+            <div className="flex items-center space-x-3">
+              <HeaderIcon className="text-primary flex-shrink-0" />
+              <h1 className="text-xl font-bold text-primary">{config.site.title}</h1>
             </div>
 
             {/* Desktop Navigation */}

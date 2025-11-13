@@ -19,47 +19,50 @@ import NotFound from "./pages/NotFound";
 import { PermissionsProvider } from "./contexts/PermissionsContext";
 import AdminRoute from "./components/routes/AdminRoute";
 import TeamLeadRoute from "./components/routes/TeamLeadRoute";
+import { ConfigProvider } from "./contexts/ConfigContext"; // Добавляем импорт
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <PermissionsProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/" element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }>
-                <Route index element={<Dashboard />} />
-                <Route path="deals" element={<Deals />} />
-                <Route path="payment-details" element={<PaymentDetails />} />
-                <Route path="history" element={<History />} />
-                <Route path="statistics" element={<Statistics />} />
-                <Route path="settings" element={<Settings />} />
-                <Route path="team-lead" element={
-                  <TeamLeadRoute>
-                    <TeamLead />
-                  </TeamLeadRoute>
-                } />
-                <Route path="admin" element={
-                  <AdminRoute>
-                    <Admin />
-                  </AdminRoute>
-                } />
-              </Route>
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </PermissionsProvider>
-    </AuthProvider>
+    <ConfigProvider> {/* Добавляем провайдер конфига */}
+      <AuthProvider>
+        <PermissionsProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/" element={
+                  <ProtectedRoute>
+                    <Layout />
+                  </ProtectedRoute>
+                }>
+                  <Route index element={<Dashboard />} />
+                  <Route path="deals" element={<Deals />} />
+                  <Route path="payment-details" element={<PaymentDetails />} />
+                  <Route path="history" element={<History />} />
+                  <Route path="statistics" element={<Statistics />} />
+                  <Route path="settings" element={<Settings />} />
+                  <Route path="team-lead" element={
+                    <TeamLeadRoute>
+                      <TeamLead />
+                    </TeamLeadRoute>
+                  } />
+                  <Route path="admin" element={
+                    <AdminRoute>
+                      <Admin />
+                    </AdminRoute>
+                  } />
+                </Route>
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </PermissionsProvider>
+      </AuthProvider>
+    </ConfigProvider>
   </QueryClientProvider>
 );
 
