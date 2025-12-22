@@ -64,7 +64,7 @@ interface Filters {
 }
 
 const statusOptions = ["PENDING", "COMPLETED", "CANCELED", "DISPUTE"];
-const typeOptions = ["BUY", "SELL"];
+const typeOptions = ["DEPOSIT", "PAYOUT"];
 const paymentSystemOptions = ["SBP", "CARD", "C2C"];
 
 const disputeReasonOptions = [
