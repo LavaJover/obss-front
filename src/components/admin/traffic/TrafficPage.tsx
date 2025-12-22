@@ -6,7 +6,8 @@ import apiClient from "@/lib/api-client";
 
 // Импорты из локальных модулей
 import { useTrafficData } from "./hooks/useTrafficData";
-import TrafficTab from "./tabs/TrafficTab";
+import MerchantsTab from "./tabs/MerchantsTab";
+import TradersTab from "./tabs/TradersTab";
 import AntiFraudTab from "./tabs/AntiFraudTab";
 import AuditTab from "./tabs/AuditTab";
 
@@ -17,15 +18,13 @@ import RuleDetailsModal from "./modals/RuleDetailsModal";
 import AuditHistoryModal from "./modals/AuditHistoryModal";
 import ManualUnlockModal from "./modals/ManualUnlockModal";
 import DeleteDialogs from "./modals/DeleteDialogs";
-
-// Импорты типов и утилит
-import { formatDecimal } from "./utils";
-import { MerchantTraffic, TrafficRecord, AntiFraudRule, TraderTraffic } from "./types";
-
-// Импорты заглушек (если они нужны, но не используются в текущей версии)
 import TraderSettingsModal from "./modals/TraderSettingsModal";
 import AddConnectionModal from "./modals/AddConnectionModal";
 import SingleConnectionModal from "./modals/SingleConnectionModal";
+
+// Импорты типов и утилит
+import { formatDecimal } from "./utils";
+import { MerchantTraffic, TrafficRecord, AntiFraudRule, TraderTraffic, User } from "./types";
 
 export default function TrafficPage() {
   const {
@@ -36,6 +35,9 @@ export default function TrafficPage() {
     fetchData,
     fetchAntiFraudData,
   } = useTrafficData();
+
+  // Состояние для активной вкладки
+  const [activeTab, setActiveTab] = useState<string>("merchants");
 
   // Состояния для модалок
   const [merchantSettingsModal, setMerchantSettingsModal] = useState<{open: boolean; merchant: MerchantTraffic | null}>({open: false, merchant: null});
@@ -54,16 +56,14 @@ export default function TrafficPage() {
 
   // Состояния для форм
   const [merchantSettingsForm, setMerchantSettingsForm] = useState({ merchant_id: "", platform_fee: "" });
-  const [traderSettingsForm, setTraderSettingsForm] = useState({ trader_id: "", connections: [] });
-  const [newConnectionForm, setNewConnectionForm] = useState({ merchant_id: "", trader_reward: "", trader_priority: "1", name: "", activity_params: {}, antifraud_params: {}, business_params: {}, merchant_deals_duration_minutes: "1440" });
-  const [singleConnectionForm, setSingleConnectionForm] = useState({ connection_id: "", merchant_id: "", trader_id: "", trader_reward: "", trader_priority: "1", name: "", activity_params: {}, antifraud_params: {}, business_params: {}, merchant_deals_duration_minutes: "1440" });
   const [unlockForm, setUnlockForm] = useState({ reason: "", grace_period_minutes: 30, admin_id: "" });
   const [newRuleForm, setNewRuleForm] = useState({ name: "", type: "consecutive_orders", config: "{}", priority: 1 });
-  const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
-  const [traderSearchOpen, setTraderSearchOpen] = useState<{[key: string]: boolean}>({});
+  
+  // Состояния для UI
   const [checkingTrader, setCheckingTrader] = useState<string | null>(null);
   const [selectedTraderForCheck, setSelectedTraderForCheck] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<{[key: string]: boolean}>({});
+  const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
 
   // Функции для работы с данными
   const copyToClipboard = async (text: string, field: string) => {
@@ -82,7 +82,7 @@ export default function TrafficPage() {
     }
   };
 
-  const renderUserInfo = (user: any) => {
+  const renderUserInfo = (user: User) => {
     const shortId = user.id.length > 8 ? `${user.id.substring(0, 8)}...` : user.id;
     
     return (
@@ -110,11 +110,18 @@ export default function TrafficPage() {
     setActionLoading(`merchant-toggle-${merchant.merchant.id}`);
     try {
       await apiClient.patch(`/traffic/merchants/${merchant.merchant.id}?unlocked=${!merchant.merchant_unlocked}`);
-      toast({ title: "Статус обновлён", description: `Трафик для мерчанта ${merchant.merchant.username} ${!merchant.merchant_unlocked ? 'разблокирован' : 'заблокирован'}` });
+      toast({ 
+        title: "Статус обновлён", 
+        description: `Трафик для мерчанта ${merchant.merchant.username} ${!merchant.merchant_unlocked ? 'разблокирован' : 'заблокирован'}` 
+      });
       await fetchData();
     } catch (err: any) {
       console.error("Ошибка при обновлении статуса мерчанта:", err);
-      toast({ title: "Ошибка обновления", description: err.response?.data?.message || "Не удалось обновить статус трафика", variant: "destructive" });
+      toast({ 
+        title: "Ошибка обновления", 
+        description: err.response?.data?.message || "Не удалось обновить статус трафика", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
@@ -153,7 +160,11 @@ export default function TrafficPage() {
       await fetchData();
     } catch (err: any) {
       console.error("Ошибка при сохранении настроек мерчанта:", err);
-      toast({ title: "Ошибка сохранения", description: err.response?.data?.message || "Не удалось сохранить настройки", variant: "destructive" });
+      toast({ 
+        title: "Ошибка сохранения", 
+        description: err.response?.data?.message || "Не удалось сохранить настройки", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
@@ -164,45 +175,49 @@ export default function TrafficPage() {
     setActionLoading(`trader-toggle-${trader.trader.id}`);
     try {
       await apiClient.patch(`/traffic/traders/${trader.trader.id}?unlocked=${!trader.trader_unlocked}`);
-      toast({ title: "Статус обновлён", description: `Трафик для трейдера ${trader.trader.username} ${!trader.trader_unlocked ? 'разблокирован' : 'заблокирован'}` });
+      toast({ 
+        title: "Статус обновлён", 
+        description: `Трафик для трейдера ${trader.trader.username} ${!trader.trader_unlocked ? 'разблокирован' : 'заблокирован'}` 
+      });
       await fetchData();
     } catch (err: any) {
       console.error("Ошибка при обновлении статуса трейдера:", err);
-      toast({ title: "Ошибка обновления", description: err.response?.data?.message || "Не удалось обновить статус трафика", variant: "destructive" });
+      toast({ 
+        title: "Ошибка обновления", 
+        description: err.response?.data?.message || "Не удалось обновить статус трафика", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Добавить обработчик открытия настроек трейдера (заменить пустой openTraderSettings)
   const openTraderSettings = (trader: TraderTraffic) => {
     setTraderSettingsModal({ open: true, trader: trader });
   };
 
-  // Добавить обработчики для сохранения настроек трейдера
   const handleTraderSettingsSave = async (traderId: string, connections: any[]) => {
     setActionLoading(`trader-save-${traderId}`);
     try {
       const updatePromises = connections.map(connection => {
-        // Для новых подключений (без id) создаем
         if (!connection.id || connection.id.startsWith('new-')) {
           return apiClient.post("/admin/traffic/create", {
             trader_id: traderId,
             merchant_id: connection.merchant_id,
             trader_reward: parseFloat(connection.trader_reward) / 100,
-            trader_priority: parseFloat(connection.trader_priority), // Исправлено на parseFloat
-            platform_fee: 0, // default
+            trader_priority: parseFloat(connection.trader_priority),
+            platform_fee: 0,
+            enabled: true,
             name: connection.name,
             traffic_activity_params: connection.activity_params,
             traffic_antifraud_params: connection.antifraud_params,
             traffic_business_params: connection.business_params
           });
         } else {
-          // Для существующих обновляем
           return apiClient.patch("/admin/traffic/edit", {
             id: connection.id,
             trader_reward: parseFloat(connection.trader_reward) / 100,
-            trader_priority: parseFloat(connection.trader_priority), // Исправлено на parseFloat
+            trader_priority: parseFloat(connection.trader_priority),
             name: connection.name,
             activity_params: connection.activity_params,
             antifraud_params: connection.antifraud_params,
@@ -210,20 +225,25 @@ export default function TrafficPage() {
           });
         }
       });
-  
+
       await Promise.all(updatePromises);
       toast({ title: "Настройки сохранены", description: "Настройки трейдера успешно обновлены" });
       setTraderSettingsModal({ open: false, trader: null });
       await fetchData();
+      // Остаемся на вкладке трейдеров после сохранения
+      setActiveTab("traders");
     } catch (err: any) {
       console.error("Ошибка при сохранении настроек трейдера:", err);
-      toast({ title: "Ошибка сохранения", description: err.response?.data?.message || "Не удалось сохранить настройки", variant: "destructive" });
+      toast({ 
+        title: "Ошибка сохранения", 
+        description: err.response?.data?.message || "Не удалось сохранить настройки", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Добавить обработчик добавления подключения
   const handleAddTraderConnection = async (traderId: string, connection: any) => {
     setActionLoading(`trader-add-${traderId}`);
     try {
@@ -231,33 +251,45 @@ export default function TrafficPage() {
         trader_id: traderId,
         merchant_id: connection.merchant_id,
         trader_reward: parseFloat(connection.trader_reward) / 100,
-        trader_priority: parseInt(connection.trader_priority),
-        platform_fee: 0, // default
+        trader_priority: parseFloat(connection.trader_priority),
+        platform_fee: 0,
+        enabled: true,
         name: connection.name,
-        activity_params: connection.activity_params,
-        antifraud_params: connection.antifraud_params,
-        business_params: connection.business_params
+        traffic_activity_params: connection.activity_params,
+        traffic_antifraud_params: connection.antifraud_params,
+        traffic_business_params: connection.business_params
       });
       toast({ title: "Подключение добавлено", description: "Новое подключение успешно создано" });
       await fetchData();
+      // Остаемся на вкладке трейдеров после добавления
+      setActiveTab("traders");
     } catch (err: any) {
       console.error("Ошибка при добавлении подключения:", err);
-      toast({ title: "Ошибка добавления", description: err.response?.data?.message || "Не удалось добавить подключение", variant: "destructive" });
+      toast({ 
+        title: "Ошибка добавления", 
+        description: err.response?.data?.message || "Не удалось добавить подключение", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
   };
 
-  // Добавить обработчик удаления подключения
   const handleDeleteTraderConnection = async (connectionId: string) => {
     setActionLoading(`connection-delete-${connectionId}`);
     try {
       await apiClient.delete(`/admin/traffic/${connectionId}`);
       toast({ title: "Подключение удалено", description: "Подключение успешно удалено" });
       await fetchData();
+      // Остаемся на вкладке трейдеров после удаления
+      setActiveTab("traders");
     } catch (err: any) {
       console.error("Ошибка при удалении подключения:", err);
-      toast({ title: "Ошибка удаления", description: err.response?.data?.message || "Не удалось удалить подключение", variant: "destructive" });
+      toast({ 
+        title: "Ошибка удаления", 
+        description: err.response?.data?.message || "Не удалось удалить подключение", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
@@ -271,12 +303,20 @@ export default function TrafficPage() {
       if (response.data.all_passed) {
         toast({ title: "Проверка пройдена", description: "Трейдер прошёл все проверки антифрода" });
       } else {
-        toast({ title: "Проверка не пройдена", description: `Провалены правила: ${response.data.failed_rules.join(", ")}`, variant: "destructive" });
+        toast({ 
+          title: "Проверка не пройдена", 
+          description: `Провалены правила: ${response.data.failed_rules?.join(", ") || 'не указаны'}`, 
+          variant: "destructive" 
+        });
       }
       await fetchAntiFraudData();
     } catch (err: any) {
       console.error("Ошибка при проверке трейдера:", err);
-      toast({ title: "Ошибка проверки", description: err.response?.data?.error || "Не удалось проверить трейдера", variant: "destructive" });
+      toast({ 
+        title: "Ошибка проверки", 
+        description: err.response?.data?.error || "Не удалось проверить трейдера", 
+        variant: "destructive" 
+      });
     } finally {
       setCheckingTrader(null);
       setSelectedTraderForCheck(null);
@@ -288,11 +328,20 @@ export default function TrafficPage() {
     setActionLoading(`rule-toggle-${ruleId}`);
     try {
       await apiClient.patch(`/antifraud/rules/${ruleId}`, { is_active: !currentStatus });
-      toast({ title: "Правило обновлено", description: `Правило ${!currentStatus ? 'активировано' : 'деактивировано'}` });
+      toast({ 
+        title: "Правило обновлено", 
+        description: `Правило ${!currentStatus ? 'активировано' : 'деактивировано'}` 
+      });
       await fetchAntiFraudData();
+      // Остаемся на вкладке антифрода после изменения
+      setActiveTab("antifraud");
     } catch (err: any) {
       console.error("Ошибка при обновлении правила:", err);
-      toast({ title: "Ошибка обновления", description: err.response?.data?.error || "Не удалось обновить правило", variant: "destructive" });
+      toast({ 
+        title: "Ошибка обновления", 
+        description: err.response?.data?.error || "Не удалось обновить правило", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
@@ -305,7 +354,11 @@ export default function TrafficPage() {
       try {
         config = JSON.parse(newRuleForm.config);
       } catch {
-        toast({ title: "Ошибка", description: "Неверный формат JSON в конфигурации", variant: "destructive" });
+        toast({ 
+          title: "Ошибка", 
+          description: "Неверный формат JSON в конфигурации", 
+          variant: "destructive" 
+        });
         setActionLoading(null);
         return;
       }
@@ -321,9 +374,59 @@ export default function TrafficPage() {
       setCreateRuleModal(false);
       setNewRuleForm({ name: "", type: "consecutive_orders", config: "{}", priority: 1 });
       await fetchAntiFraudData();
+      // Остаемся на вкладке антифрода после создания
+      setActiveTab("antifraud");
     } catch (err: any) {
       console.error("Ошибка при создании правила:", err);
-      toast({ title: "Ошибка создания", description: err.response?.data?.error || "Не удалось создать правило", variant: "destructive" });
+      toast({ 
+        title: "Ошибка создания", 
+        description: err.response?.data?.error || "Не удалось создать правило", 
+        variant: "destructive" 
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Обработчики для модалок подключений
+  const handleAddConnection = async (connectionData: any) => {
+    setActionLoading(`add-connection-${connectionData.trader_id}`);
+    try {
+      await apiClient.post("/admin/traffic/create", connectionData);
+      toast({ title: "Подключение создано", description: "Новое подключение успешно создано" });
+      setAddConnectionModal({ open: false, trader_id: "" });
+      await fetchData();
+      // Остаемся на текущей вкладке
+    } catch (err: any) {
+      console.error("Ошибка при создании подключения:", err);
+      toast({ 
+        title: "Ошибка создания", 
+        description: err.response?.data?.message || "Не удалось создать подключение", 
+        variant: "destructive" 
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleSaveSingleConnection = async (connectionId: string, connectionData: any) => {
+    setActionLoading(`save-connection-${connectionId}`);
+    try {
+      await apiClient.patch("/admin/traffic/edit", {
+        id: connectionId,
+        ...connectionData
+      });
+      toast({ title: "Подключение обновлено", description: "Подключение успешно обновлено" });
+      setSingleConnectionModal({ open: false, connection: null });
+      await fetchData();
+      // Остаемся на текущей вкладке
+    } catch (err: any) {
+      console.error("Ошибка при обновлении подключения:", err);
+      toast({ 
+        title: "Ошибка обновления", 
+        description: err.response?.data?.message || "Не удалось обновить подключение", 
+        variant: "destructive" 
+      });
     } finally {
       setActionLoading(null);
     }
@@ -344,26 +447,34 @@ export default function TrafficPage() {
         <h1 className="text-3xl font-bold text-foreground">Управление трафиком</h1>
       </div>
 
-      <Tabs defaultValue="traffic" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="traffic">Трафик</TabsTrigger>
+      {/* Управляемые Tabs - используем value и onValueChange */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="merchants">Мерчанты</TabsTrigger>
+          <TabsTrigger value="traders">Трейдеры</TabsTrigger>
           <TabsTrigger value="antifraud">Антифрод</TabsTrigger>
           <TabsTrigger value="audit">Аудит</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="traffic" className="mt-6">
-          <TrafficTab
-            data={data}
+        <TabsContent value="merchants" className="mt-6">
+          <MerchantsTab
+            merchants={data.merchantTraffic}
+            trafficRecords={data.trafficRecords}
+            traders={data.traders}
             actionLoading={actionLoading}
-            // setActionLoading={setActionLoading}
-            fetchData={fetchData}
-            fetchAntiFraudData={fetchAntiFraudData}
-            copyToClipboard={copyToClipboard}
             renderUserInfo={renderUserInfo}
             onOpenMerchantSettings={openMerchantSettings}
             onToggleMerchant={handleMerchantToggle}
             onDeleteMerchant={(merchant) => setDeleteMerchantDialog({ open: true, merchant })}
             onOpenSingleConnection={(connection) => setSingleConnectionModal({ open: true, connection })}
+          />
+        </TabsContent>
+
+        <TabsContent value="traders" className="mt-6">
+          <TradersTab
+            traders={data.traderTraffic}
+            actionLoading={actionLoading}
+            renderUserInfo={renderUserInfo}
             onOpenTraderSettings={openTraderSettings}
             onCheckTrader={handleCheckTrader}
             onViewAuditHistory={async (traderId) => {
@@ -380,14 +491,16 @@ export default function TrafficPage() {
                 });
               } catch (err: any) {
                 console.error("Ошибка при загрузке истории:", err);
-                toast({ title: "Ошибка", description: "Не удалось загрузить историю проверок", variant: "destructive" });
+                toast({ 
+                  title: "Ошибка", 
+                  description: "Не удалось загрузить историю проверок", 
+                  variant: "destructive" 
+                });
               }
             }}
             onManualUnlock={(trader) => setUnlockModal({ open: true, trader_id: trader.trader.id, trader_name: trader.trader.username })}
             onDeleteTrader={(trader) => setDeleteTraderDialog({ open: true, trader })}
             checkingTrader={checkingTrader}
-            // setCheckingTrader={setCheckingTrader}
-            // selectedTraderForCheck={selectedTraderForCheck}
           />
         </TabsContent>
 
@@ -404,9 +517,14 @@ export default function TrafficPage() {
                 await apiClient.delete(`/antifraud/rules/${ruleId}`);
                 toast({ title: "Правило удалено", description: "Правило успешно удалено" });
                 await fetchAntiFraudData();
+                setActiveTab("antifraud");
               } catch (err: any) {
                 console.error("Ошибка при удалении правила:", err);
-                toast({ title: "Ошибка удаления", description: err.response?.data?.error || "Не удалось удалить правило", variant: "destructive" });
+                toast({ 
+                  title: "Ошибка удаления", 
+                  description: err.response?.data?.error || "Не удалось удалить правило", 
+                  variant: "destructive" 
+                });
               } finally {
                 setActionLoading(null);
               }
@@ -418,7 +536,6 @@ export default function TrafficPage() {
           <AuditTab
             auditLogs={data.auditLogs}
             traders={data.traders}
-            // renderUserInfo={renderUserInfo}
           />
         </TabsContent>
       </Tabs>
@@ -433,6 +550,40 @@ export default function TrafficPage() {
         formErrors={formErrors}
         actionLoading={actionLoading === `merchant-save-${merchantSettingsForm.merchant_id}`}
         onSave={handleMerchantSettingsSave}
+      />
+
+      <TraderSettingsModal
+        open={traderSettingsModal.open}
+        onOpenChange={(open) => setTraderSettingsModal({...traderSettingsModal, open})}
+        trader={traderSettingsModal.trader}
+        merchants={data.merchants}
+        trafficRecords={data.trafficRecords}
+        actionLoading={actionLoading}
+        onSave={handleTraderSettingsSave}
+        onAddConnection={handleAddTraderConnection}
+        onDeleteConnection={handleDeleteTraderConnection}
+      />
+
+      <AddConnectionModal
+        open={addConnectionModal.open}
+        onOpenChange={(open) => setAddConnectionModal({...addConnectionModal, open})}
+        traderId={addConnectionModal.trader_id}
+        traders={data.traders}
+        merchants={data.merchants}
+        trafficRecords={data.trafficRecords}
+        actionLoading={actionLoading?.startsWith('add-connection-') || false}
+        onSave={handleAddConnection}
+      />
+
+      <SingleConnectionModal
+        open={singleConnectionModal.open}
+        onOpenChange={(open) => setSingleConnectionModal({...singleConnectionModal, open})}
+        connection={singleConnectionModal.connection}
+        merchants={data.merchants}
+        traders={data.traders}
+        actionLoading={actionLoading?.startsWith('save-connection-') || false}
+        onSave={handleSaveSingleConnection}
+        onDelete={handleDeleteTraderConnection}
       />
 
       <ManualUnlockModal
@@ -452,7 +603,11 @@ export default function TrafficPage() {
         actionLoading={actionLoading === `unlock-${unlockModal.trader_id}`}
         onSave={async () => {
           if (!unlockForm.reason.trim()) {
-            toast({ title: "Ошибка", description: "Укажите причину разблокировки", variant: "destructive" });
+            toast({ 
+              title: "Ошибка", 
+              description: "Укажите причину разблокировки", 
+              variant: "destructive" 
+            });
             return;
           }
           const adminId = "temp-admin-id";
@@ -464,29 +619,25 @@ export default function TrafficPage() {
               grace_period_hours: Math.ceil(unlockForm.grace_period_minutes / 60)
             });
             const gracePeriodUntil = new Date(response.data.grace_period_until);
-            toast({ title: "Трейдер разблокирован", description: `Грейс-период действует до ${gracePeriodUntil.toLocaleString('ru-RU')}` });
+            toast({ 
+              title: "Трейдер разблокирован", 
+              description: `Грейс-период действует до ${gracePeriodUntil.toLocaleString('ru-RU')}` 
+            });
             setUnlockModal({open: false, trader_id: "", trader_name: ""});
             setUnlockForm({reason: "", grace_period_minutes: 30, admin_id: ""});
             await Promise.all([fetchData(), fetchAntiFraudData()]);
+            setActiveTab("traders");
           } catch (err: any) {
             console.error("Ошибка при разблокировке:", err);
-            toast({ title: "Ошибка разблокировки", description: err.response?.data?.error || "Не удалось разблокировать трейдера", variant: "destructive" });
+            toast({ 
+              title: "Ошибка разблокировки", 
+              description: err.response?.data?.error || "Не удалось разблокировать трейдера", 
+              variant: "destructive" 
+            });
           } finally {
             setActionLoading(null);
           }
         }}
-      />
-
-      <TraderSettingsModal
-        open={traderSettingsModal.open}
-        onOpenChange={(open) => setTraderSettingsModal({...traderSettingsModal, open})}
-        trader={traderSettingsModal.trader}
-        merchants={data.merchants}
-        trafficRecords={data.trafficRecords}
-        actionLoading={actionLoading}
-        onSave={handleTraderSettingsSave}
-        onAddConnection={handleAddTraderConnection}
-        onDeleteConnection={handleDeleteTraderConnection}
       />
 
       <CreateRuleModal
@@ -533,12 +684,20 @@ export default function TrafficPage() {
               .filter(record => record.merchant_id === deleteMerchantDialog.merchant!.merchant.id)
               .map(record => apiClient.delete(`/admin/traffic/${record.id}`));
             await Promise.all(deletePromises);
-            toast({ title: "Мерчант удалён", description: `Все записи трафика для ${deleteMerchantDialog.merchant.merchant.username} удалены` });
+            toast({ 
+              title: "Мерчант удалён", 
+              description: `Все записи трафика для ${deleteMerchantDialog.merchant.merchant.username} удалены` 
+            });
             setDeleteMerchantDialog({ open: false, merchant: null });
             await fetchData();
+            setActiveTab("merchants");
           } catch (err: any) {
             console.error("Ошибка при удалении мерчанта:", err);
-            toast({ title: "Ошибка удаления", description: err.response?.data?.message || "Не удалось удалить записи трафика", variant: "destructive" });
+            toast({ 
+              title: "Ошибка удаления", 
+              description: err.response?.data?.message || "Не удалось удалить записи трафика", 
+              variant: "destructive" 
+            });
           } finally {
             setActionLoading(null);
           }
@@ -551,12 +710,20 @@ export default function TrafficPage() {
               apiClient.delete(`/admin/traffic/${connection.id}`)
             );
             await Promise.all(deletePromises);
-            toast({ title: "Трейдер удалён", description: `Все записи трафика для ${deleteTraderDialog.trader.trader.username} удалены` });
+            toast({ 
+              title: "Трейдер удалён", 
+              description: `Все записи трафика для ${deleteTraderDialog.trader.trader.username} удалены` 
+            });
             setDeleteTraderDialog({ open: false, trader: null });
             await fetchData();
+            setActiveTab("traders");
           } catch (err: any) {
             console.error("Ошибка при удалении трейдера:", err);
-            toast({ title: "Ошибка удаления", description: err.response?.data?.message || "Не удалось удалить записи трафика", variant: "destructive" });
+            toast({ 
+              title: "Ошибка удаления", 
+              description: err.response?.data?.message || "Не удалось удалить записи трафика", 
+              variant: "destructive" 
+            });
           } finally {
             setActionLoading(null);
           }
@@ -571,15 +738,16 @@ export default function TrafficPage() {
             await fetchData();
           } catch (err: any) {
             console.error("Ошибка при удалении подключения:", err);
-            toast({ title: "Ошибка удаления", description: err.response?.data?.message || "Не удалось удалить подключение", variant: "destructive" });
+            toast({ 
+              title: "Ошибка удаления", 
+              description: err.response?.data?.message || "Не удалось удалить подключение", 
+              variant: "destructive" 
+            });
           } finally {
             setActionLoading(null);
           }
         }}
       />
-
-      {/* Остальные модалки (TraderSettingsModal, AddConnectionModal, SingleConnectionModal) */}
-      {/* Их можно добавить аналогично */}
     </div>
   );
 }
