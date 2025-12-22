@@ -17,7 +17,7 @@ import {
   Bot // Добавляем иконку робота
 } from "lucide-react";
 
-import TrafficTab from "@/components/admin/Traffic";
+import TrafficTab from "@/components/admin/traffic/TrafficPage";
 import WalletsTab from "@/components/admin/Wallets";
 import DisputesTab from "@/components/admin/Disputes";
 import DealsTab from "@/components/admin/Deals";
