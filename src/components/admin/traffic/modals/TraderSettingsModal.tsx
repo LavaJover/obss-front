@@ -195,32 +195,17 @@ export default function TraderSettingsModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto"
-            // Добавить эти пропсы:
-            onInteractOutside={(e) => {
-                // Предотвращаем закрытие при клике на элементы формы
-                const target = e.target as HTMLElement;
-                if (target.closest('.modal-content') || actionLoading !== null) {
-                  e.preventDefault();
-                }
-              }}
-              // Блокируем прокрутку фона
-              onOpenAutoFocus={(e) => e.preventDefault()}
-              style={{ 
-                maxHeight: 'calc(100vh - 40px)',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column'
-              }}
-        >
-    <div className="modal-content flex-1 overflow-auto pr-2">    
-        <DialogHeader>
+        className="sm:max-w-[900px] h-[90vh] flex flex-col p-0"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <DialogTitle>
             Настройки трейдера: {trader.trader.username} (@{trader.trader.login})
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-4 py-4">
+        {/* Основной контент с прокруткой */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {connections.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               Нет подключений к мерчантам
@@ -254,7 +239,7 @@ export default function TraderSettingsModal({
                     </TabsList>
 
                     <TabsContent value="basic" className="space-y-4 mt-4">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Название</Label>
                           <Input
@@ -267,6 +252,7 @@ export default function TraderSettingsModal({
                           <Label>Награда трейдера (%)</Label>
                           <Input
                             type="text"
+                            inputMode="decimal"
                             value={connection.trader_reward}
                             onChange={(e) => {
                               const validated = validatePercentageInput(e.target.value);
@@ -303,6 +289,7 @@ export default function TraderSettingsModal({
                           type="number"
                           min={1}
                           max={10080}
+                          inputMode="numeric"
                           value={connection.merchant_deals_duration_minutes}
                           onChange={(e) => handleConnectionChange(index, "merchant_deals_duration_minutes", e.target.value)}
                           placeholder="1440"
@@ -405,7 +392,7 @@ export default function TraderSettingsModal({
                   )}
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Название</Label>
                     <Input
@@ -418,6 +405,7 @@ export default function TraderSettingsModal({
                     <Label>Награда трейдера (%)</Label>
                     <Input
                       type="text"
+                      inputMode="decimal"
                       value={newConnection.trader_reward}
                       onChange={(e) => {
                         const validated = validatePercentageInput(e.target.value);
@@ -459,8 +447,9 @@ export default function TraderSettingsModal({
             </Button>
           )}
         </div>
-    </div>    
-        <DialogFooter>
+        
+        {/* Футер без прокрутки */}
+        <DialogFooter className="px-6 py-4 border-t shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={actionLoading !== null}>
             Отмена
           </Button>

@@ -115,3 +115,24 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Улучшение для мобильных устройств */
+@media (max-width: 768px) {
+  [role="dialog"] {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  
+  input, select, textarea, button {
+    font-size: 16px !important; /* Предотвращает масштабирование iOS */
+  }
+  
+  /* Предотвращает фокус на заднем фоне */
+  .pointer-events-none {
+    pointer-events: none;
+  }
+  
+  .pointer-events-auto {
+    pointer-events: auto;
+  }
+}
