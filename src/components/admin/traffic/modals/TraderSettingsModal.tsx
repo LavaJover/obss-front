@@ -196,9 +196,10 @@ export default function TraderSettingsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto"
-        onPointerDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onTouchEnd={(e) => e.stopPropagation()}>
+        style={{
+            touchAction: 'none', // Предотвращает жесты на мобильных
+            overscrollBehavior: 'contain', // Предотвращает скролл заднего фона
+          }}>
         <DialogHeader>
           <DialogTitle>
             Настройки трейдера: {trader.trader.username} (@{trader.trader.login})
