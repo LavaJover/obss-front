@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Copy, CheckCheck } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -64,6 +64,47 @@ export default function TrafficPage() {
   const [selectedTraderForCheck, setSelectedTraderForCheck] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<{[key: string]: boolean}>({});
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
+
+  // В начале компонента TrafficPage добавить:
+useEffect(() => {
+  const hasOpenModal = 
+    merchantSettingsModal.open || 
+    traderSettingsModal.open || 
+    addConnectionModal.open ||
+    singleConnectionModal.open ||
+    createRuleModal ||
+    ruleModal.open ||
+    auditHistoryModal.open ||
+    unlockModal.open ||
+    deleteMerchantDialog.open ||
+    deleteTraderDialog.open ||
+    deleteConnectionDialog.open;
+  
+  if (hasOpenModal) {
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+  } else {
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+  }
+  
+  return () => {
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+  };
+}, [
+  merchantSettingsModal.open,
+  traderSettingsModal.open,
+  addConnectionModal.open,
+  singleConnectionModal.open,
+  createRuleModal,
+  ruleModal.open,
+  auditHistoryModal.open,
+  unlockModal.open,
+  deleteMerchantDialog.open,
+  deleteTraderDialog.open,
+  deleteConnectionDialog.open
+]);
 
   // Функции для работы с данными
   const copyToClipboard = async (text: string, field: string) => {

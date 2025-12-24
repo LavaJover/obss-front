@@ -196,10 +196,24 @@ export default function TraderSettingsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
         className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto"
-        style={{
-            touchAction: 'none', // Предотвращает жесты на мобильных
-            overscrollBehavior: 'contain', // Предотвращает скролл заднего фона
-          }}>
+            // Добавить эти пропсы:
+            onInteractOutside={(e) => {
+                // Предотвращаем закрытие при клике на элементы формы
+                const target = e.target as HTMLElement;
+                if (target.closest('.modal-content') || actionLoading !== null) {
+                  e.preventDefault();
+                }
+              }}
+              // Блокируем прокрутку фона
+              onOpenAutoFocus={(e) => e.preventDefault()}
+              style={{ 
+                maxHeight: 'calc(100vh - 40px)',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column'
+              }}
+        >
+    <div className="modal-content flex-1 overflow-auto pr-2">    
         <DialogHeader>
           <DialogTitle>
             Настройки трейдера: {trader.trader.username} (@{trader.trader.login})
@@ -445,7 +459,7 @@ export default function TraderSettingsModal({
             </Button>
           )}
         </div>
-        
+    </div>    
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={actionLoading !== null}>
             Отмена
