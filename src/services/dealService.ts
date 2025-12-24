@@ -29,7 +29,7 @@ export interface Deal {
   created_at: string;
   updated_at: string;
   expires_at?: string;
-  
+  device_id?: string;
   bank_detail?: {
     bank_name: string;
     payment_system: string;
