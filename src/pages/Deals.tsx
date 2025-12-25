@@ -579,7 +579,7 @@ export default function Deals() {
     const transformed: Deal = {
       ...deal,
       id: deal.order_id,
-      device: "—",
+      device: deal.device_id || "-",
       paymentMethod: getPaymentMethod(deal.bank_detail?.payment_system || ""),
       bank: deal.bank_detail?.bank_name || "",
       paymentDetails: formatPaymentDetails(deal.bank_detail),
