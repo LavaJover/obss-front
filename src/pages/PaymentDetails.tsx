@@ -1021,14 +1021,14 @@ export default function PaymentDetails() {
                     />
                     <div className="mt-4 space-y-2">
                       <p className="text-sm font-medium">QR-код для: {currentQrDevice.deviceName}</p>
-                      <div className="bg-background border rounded p-2">
+                      {/* <div className="bg-background border rounded p-2">
                         <p className="text-xs font-mono break-all">
                           {generateQrData()}
                         </p>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Данные для привязки устройства
-                      </p>
+                      </p> */}
                     </div>
                   </>
                 ) : (
